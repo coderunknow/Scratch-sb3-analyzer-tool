@@ -1,0 +1,1607 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scratch .sb3 Analyzer — Phân tích logic dự án Scratch</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    .drop-zone.dragover { border-color: #22c55e; background: #f0fdf4; }
+    .substeps { margin-left: 1.5rem; border-left: 2px solid #e5e7eb; padding-left: 1rem; margin-top: 0.25rem; margin-bottom: 0.25rem; }
+    .substeps-else { margin-left: 1.5rem; border-left: 2px solid #fbbf24; padding-left: 1rem; margin-top: 0.25rem; margin-bottom: 0.25rem; }
+    .step { padding: 2px 0; line-height: 1.6; }
+    .step-num { color: #6b7280; font-size: 0.85em; margin-right: 4px; font-family: monospace; }
+    .keyword { color: #7c3aed; font-weight: 600; }
+    .value-text { color: #059669; }
+    .var-text { color: #dc2626; font-style: italic; }
+    .cond-text { color: #2563eb; }
+    .event-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; font-weight: 600; margin-bottom: 4px; }
+    .event-flag { background: #22c55e; color: white; }
+    .event-key { background: #f59e0b; color: white; }
+    .event-click { background: #8b5cf6; color: white; }
+    .event-broadcast { background: #3b82f6; color: white; }
+    .event-clone { background: #ec4899; color: white; }
+    .event-other { background: #6b7280; color: white; }
+    .event-custom { background: #14b8a6; color: white; }
+    .collapsible-header { cursor: pointer; user-select: none; }
+    .collapsible-header:hover { background: #f3f4f6; }
+    .level-btn { transition: all 0.2s; }
+    .level-btn.active { box-shadow: 0 0 0 2px #3b82f6; }
+    .severity-red { background: #fef2f2; border-left: 4px solid #ef4444; }
+    .severity-yellow { background: #fffbeb; border-left: 4px solid #f59e0b; }
+    .severity-green { background: #f0fdf4; border-left: 4px solid #22c55e; }
+    .behavior-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.8em; margin: 2px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    .role-badge { display: inline-block; padding: 2px 10px; border-radius: 6px; font-size: 0.8em; font-weight: 600; }
+    .role-player { background: #dbeafe; color: #1d4ed8; }
+    .role-enemy { background: #fee2e2; color: #b91c1c; }
+    .role-projectile { background: #fef3c7; color: #92400e; }
+    .role-ui { background: #e0e7ff; color: #4338ca; }
+    .role-collectible { background: #d1fae5; color: #065f46; }
+    .role-controller { background: #f3e8ff; color: #7c3aed; }
+    .role-decoration { background: #f1f5f9; color: #64748b; }
+    .role-entity { background: #ecfdf5; color: #047857; }
+    .focus-badge { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; }
+    .opcode { display: inline; background: #1e293b; color: #67e8f9; padding: 1px 5px; border-radius: 3px; font-size: 0.78em; font-family: 'SF Mono', 'Fira Code', monospace; letter-spacing: -0.3px; vertical-align: middle; white-space: nowrap; }
+    .confidence-high { color: #16a34a; }
+    .confidence-mid { color: #d97706; }
+    .confidence-low { color: #dc2626; }
+    .dev-sprite-header { background: #1e293b; color: #f1f5f9; }
+    .dev-script-border { border-left: 4px solid #6366f1; }
+    .unresolved { background: #fef2f2; color: #dc2626; padding: 1px 5px; border-radius: 3px; font-size: 0.82em; font-family: 'SF Mono', 'Fira Code', monospace; border: 1px dashed #fca5a5; }
+    @media print { .no-print { display: none !important; } }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <!-- Header -->
+  <div class="bg-white border-b shadow-sm">
+    <div class="max-w-5xl mx-auto px-4 py-4">
+      <h1 class="text-2xl font-bold text-gray-800 flex items-center gap-2">🔍 Scratch .sb3 Analyzer</h1>
+      <p class="text-gray-500 text-sm mt-1">Phân tích và diễn giải logic dự án Scratch — dành cho người không biết lập trình</p>
+    </div>
+  </div>
+
+  <div class="max-w-5xl mx-auto px-4 py-6">
+    <!-- Upload Zone -->
+    <div id="dropZone" class="drop-zone no-print border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer transition-all hover:border-green-400 hover:bg-green-50 bg-white">
+      <div class="text-5xl mb-3">📂</div>
+      <p class="text-lg font-semibold text-gray-700">Kéo thả file .sb3 vào đây</p>
+      <p class="text-gray-400 text-sm mt-1">hoặc nhấp để chọn file</p>
+      <input type="file" id="fileInput" accept=".sb3" class="hidden">
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="hidden text-center py-8">
+      <div class="inline-block animate-spin text-4xl">⚙️</div>
+      <p class="text-gray-500 mt-2">Đang phân tích dự án...</p>
+    </div>
+
+    <!-- Error -->
+    <div id="errorBox" class="hidden bg-red-50 border border-red-200 rounded-xl p-4 mt-4">
+      <p class="text-red-700 font-semibold">❌ Lỗi</p>
+      <p id="errorMsg" class="text-red-600 text-sm mt-1"></p>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="hidden mt-6 space-y-4">
+      <!-- Toolbar -->
+      <div class="no-print bg-white rounded-xl border p-4 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <!-- Level buttons -->
+          <div class="flex gap-2">
+            <button onclick="switchLevel(1)" id="lvl1" class="level-btn px-3 py-1.5 rounded-lg text-sm font-medium border cursor-pointer bg-gray-50 hover:bg-gray-100">1️⃣ Cơ bản</button>
+            <button onclick="switchLevel(2)" id="lvl2" class="level-btn px-3 py-1.5 rounded-lg text-sm font-medium border cursor-pointer bg-blue-50 text-blue-700 active">2️⃣ Trung bình</button>
+            <button onclick="switchLevel(3)" id="lvl3" class="level-btn px-3 py-1.5 rounded-lg text-sm font-medium border cursor-pointer bg-gray-50 hover:bg-gray-100">3️⃣ Nâng cao</button>
+          </div>
+          <!-- Controls -->
+          <div class="flex gap-2 items-center flex-wrap">
+            <select id="spriteFocus" onchange="applyFocus()" class="text-sm border rounded-lg px-2 py-1.5 bg-white cursor-pointer">
+              <option value="">📋 Tất cả sprite</option>
+            </select>
+            <button onclick="showDebugOnly()" class="px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-sm font-medium border border-amber-200 hover:bg-amber-100 cursor-pointer">🐛 Debug</button>
+            <button onclick="togglePanel('roles')" id="btnToggleRoles" class="px-3 py-1.5 rounded-lg text-sm font-medium border cursor-pointer bg-green-50 text-green-700 border-green-200 hover:bg-green-100">👁️ Vai trò</button>
+            <button onclick="togglePanel('debug')" id="btnToggleDebug" class="px-3 py-1.5 rounded-lg text-sm font-medium border cursor-pointer bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100">👁️ Cảnh báo</button>
+            <button onclick="copyResults()" class="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 cursor-pointer">📋 Copy</button>
+            <button onclick="resetTool()" class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 cursor-pointer">🔄 File khác</button>
+          </div>
+        </div>
+        <div class="mt-2 text-xs text-gray-400" id="levelDesc">📊 Hiển thị logic chính, cảnh báo thực tế, và gợi ý cải thiện.</div>
+      </div>
+
+      <!-- Dynamic content -->
+      <div id="resultsContent"></div>
+
+      <!-- Adjustment section -->
+      <div class="no-print bg-white rounded-xl border p-4 shadow-sm" id="adjustmentSection">
+        <h3 class="text-sm font-bold text-gray-600 mb-2">🎛️ Điều chỉnh mức phân tích</h3>
+        <div class="flex gap-2 flex-wrap">
+          <button onclick="adjustLevel('less')" class="px-3 py-1.5 bg-gray-100 rounded-lg text-sm hover:bg-gray-200 cursor-pointer">📝 Tóm gọn hơn</button>
+          <button onclick="adjustLevel('more')" class="px-3 py-1.5 bg-gray-100 rounded-lg text-sm hover:bg-gray-200 cursor-pointer">🔍 Chi tiết hơn</button>
+          <button onclick="showDebugOnly()" class="px-3 py-1.5 bg-gray-100 rounded-lg text-sm hover:bg-gray-200 cursor-pointer">🐛 Chỉ xem Debug</button>
+          <button onclick="showRecsOnly()" class="px-3 py-1.5 bg-gray-100 rounded-lg text-sm hover:bg-gray-200 cursor-pointer">💡 Chỉ xem Gợi ý</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="max-w-5xl mx-auto px-4 py-6 text-center text-xs text-gray-400 border-t mt-8">
+    <p>Scratch .sb3 Analyzer — Phân tích file Scratch 3.0 trực tiếp trong trình duyệt. Không upload lên server.</p>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-6 right-6 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none text-sm">Đã copy!</div>
+
+<script>
+// ========================================================================
+// GLOBALS
+// ========================================================================
+let globalAnalysisData = null;
+let currentLevel = 2;
+let currentFocus = '';
+let debugOnlyMode = false;
+let showOpcodes = false;
+let showRolesPanel = true;
+let showDebugPanel = true;
+
+// ========================================================================
+// UTILITY
+// ========================================================================
+function esc(str) {
+  return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function kw(s) { return `<span class="keyword">${s}</span>`; }
+function val(s) { return `<span class="value-text">${esc(s)}</span>`; }
+function varRef(s) { return `<span class="var-text">${esc(s)}</span>`; }
+function cond(s) { return `<span class="cond-text">${s}</span>`; }
+
+// ========================================================================
+// FILE HANDLING
+// ========================================================================
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files.length) processFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => { if (e.target.files.length) processFile(e.target.files[0]); });
+
+async function processFile(file) {
+  if (!file.name.endsWith('.sb3')) { showError('Vui lòng chọn file có đuôi .sb3'); return; }
+  hideError();
+  document.getElementById('results').classList.add('hidden');
+  document.getElementById('loading').classList.remove('hidden');
+  try {
+    const zip = await JSZip.loadAsync(file);
+    const projectFile = zip.file('project.json');
+    if (!projectFile) throw new Error('Không tìm thấy project.json trong file .sb3.');
+    const text = await projectFile.async('string');
+    const project = JSON.parse(text);
+    globalAnalysisData = analyzeProject(project, file.name);
+    currentLevel = 2;
+    currentFocus = '';
+    debugOnlyMode = false;
+    showRolesPanel = true;
+    showDebugPanel = true;
+    const _rBtn = document.getElementById('btnToggleRoles');
+    const _dBtn = document.getElementById('btnToggleDebug');
+    if (_rBtn) { _rBtn.innerHTML = '👁️ Vai trò'; _rBtn.className = 'px-3 py-1.5 rounded-lg text-sm font-medium border cursor-pointer bg-green-50 text-green-700 border-green-200 hover:bg-green-100'; }
+    if (_dBtn) { _dBtn.innerHTML = '👁️ Cảnh báo'; _dBtn.className = 'px-3 py-1.5 rounded-lg text-sm font-medium border cursor-pointer bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'; }
+    populateSpriteFocus();
+    renderResults();
+    document.getElementById('results').classList.remove('hidden');
+  } catch (err) {
+    showError(err.message || 'Không thể đọc file .sb3');
+  } finally {
+    document.getElementById('loading').classList.add('hidden');
+  }
+}
+
+function showError(msg) { document.getElementById('errorMsg').textContent = msg; document.getElementById('errorBox').classList.remove('hidden'); }
+function hideError() { document.getElementById('errorBox').classList.add('hidden'); }
+function resetTool() { document.getElementById('results').classList.add('hidden'); fileInput.value = ''; globalAnalysisData = null; }
+
+// ========================================================================
+// INPUT RESOLUTION
+// ========================================================================
+function resolveInput(name, block, blocks, depth) {
+  if (depth > 40) return '(…)';
+  if (!block.inputs || !block.inputs[name]) {
+    return '<span class="unresolved">[UNRESOLVED INPUT: "' + esc(name) + '" không tồn tại trong block ' + esc(block.opcode || '?') + ']</span>';
+  }
+  const input = block.inputs[name];
+  const st = input[0];
+  if (st === 1) {
+    if (input[1] === null || input[1] === undefined) return '(trống)';
+    if (Array.isArray(input[1])) return resolveLiteral(input[1]);
+    if (typeof input[1] === 'string' && blocks[input[1]]) return describeReporterOrMenu(input[1], blocks, depth + 1);
+    if (typeof input[1] === 'string') return '<span class="unresolved">[UNRESOLVED BLOCK ID: ' + esc(input[1].substring(0,20)) + ']</span>';
+    return esc(String(input[1]));
+  }
+  if (st === 2) {
+    if (input[1] === null || input[1] === undefined) return '(trống)';
+    // Check for literal array first (variable/list refs can appear in any state)
+    if (Array.isArray(input[1])) return resolveLiteral(input[1]);
+    if (typeof input[1] === 'string' && blocks[input[1]]) return describeReporterOrMenu(input[1], blocks, depth + 1);
+    if (typeof input[1] === 'string') return '<span class="unresolved">[UNRESOLVED BLOCK ID: ' + esc(input[1].substring(0,20)) + ']</span>';
+    return '<span class="unresolved">[UNRESOLVED INPUT type=2]</span>';
+  }
+  if (st === 3) {
+    // Priority 1: input[1] is a reporter block ID (string that exists in blocks)
+    if (input[1] !== null && typeof input[1] === 'string' && blocks[input[1]]) return describeReporterOrMenu(input[1], blocks, depth + 1);
+    // Priority 2: input[1] is a literal variable/list/value array e.g. [12, "varName", "varId"]
+    if (input[1] !== null && Array.isArray(input[1])) return resolveLiteral(input[1]);
+    // Priority 3: Fall to shadow/default value in input[2]
+    if (input[2] !== null && input[2] !== undefined) {
+      if (Array.isArray(input[2])) return resolveLiteral(input[2]);
+      if (typeof input[2] === 'string' && blocks[input[2]]) return describeReporterOrMenu(input[2], blocks, depth + 1);
+    }
+    const rid = (input[1] && typeof input[1] === 'string') ? input[1].substring(0,20) : String(input[1]);
+    return '<span class="unresolved">[UNRESOLVED VARIABLE ID: ' + esc(rid) + ']</span>';
+  }
+  return '<span class="unresolved">[UNRESOLVED INPUT state=' + st + ']</span>';
+}
+
+function resolveLiteral(arr) {
+  if (!Array.isArray(arr) || arr.length < 2) return '<span class="unresolved">[UNRESOLVED LITERAL: dữ liệu không hợp lệ]</span>';
+  const t = arr[0], v = arr[1];
+  if (v === null || v === undefined) return '(trống)';
+  switch (t) {
+    case 4: case 5: case 6: case 7: case 8: return val(v);
+    case 9: return `<span style="display:inline-block;width:14px;height:14px;background:${esc(v)};border:1px solid #999;border-radius:3px;vertical-align:middle;"></span> ${val(v)}`;
+    case 10: return v === '' ? '(chuỗi rỗng)' : `"${val(v)}"`;
+    case 11: return `"${val(v)}"`;
+    case 12: return varRef('biến «' + v + '»');
+    case 13: return varRef('danh sách «' + v + '»');
+    default: return val(v);
+  }
+}
+
+function resolveField(name, block) {
+  if (!block.fields || !block.fields[name]) return '[UNRESOLVED FIELD: ' + name + ']';
+  return block.fields[name][0];
+}
+
+function describeReporterOrMenu(blockId, blocks, depth) {
+  const block = blocks[blockId];
+  if (!block) return '<span class="unresolved">[UNRESOLVED BLOCK ID: ' + esc(String(blockId).substring(0,20)) + ']</span>';
+  if (block.shadow) { const f = block.fields; if (f) { for (const k in f) return esc(f[k][0]); } return '<span class="unresolved">[UNRESOLVED SHADOW: không có fields]</span>'; }
+  return describeReporter(blockId, blocks, depth);
+}
+
+// ========================================================================
+// REPORTER DESCRIPTION
+// ========================================================================
+function describeReporter(blockId, blocks, depth) {
+  if (depth > 40) return '(…)';
+  const block = blocks[blockId];
+  if (!block) return '???';
+  const ri = (n) => resolveInput(n, block, blocks, depth + 1);
+  const rf = (n) => resolveField(n, block);
+  const op = block.opcode;
+  if (block.shadow) { const f = block.fields; if (f) { for (const k in f) return esc(f[k][0]); } }
+
+  switch (op) {
+    case 'operator_add': return `(${ri('NUM1')} + ${ri('NUM2')})`;
+    case 'operator_subtract': return `(${ri('NUM1')} - ${ri('NUM2')})`;
+    case 'operator_multiply': return `(${ri('NUM1')} × ${ri('NUM2')})`;
+    case 'operator_divide': return `(${ri('NUM1')} ÷ ${ri('NUM2')})`;
+    case 'operator_random': return `số ngẫu nhiên từ ${ri('FROM')} đến ${ri('TO')}`;
+    case 'operator_gt': return cond(ri('OPERAND1') + ' &gt; ' + ri('OPERAND2'));
+    case 'operator_lt': return cond(ri('OPERAND1') + ' &lt; ' + ri('OPERAND2'));
+    case 'operator_equals': return cond(ri('OPERAND1') + ' = ' + ri('OPERAND2'));
+    case 'operator_and': return cond('(' + ri('OPERAND1') + ') và (' + ri('OPERAND2') + ')');
+    case 'operator_or': return cond('(' + ri('OPERAND1') + ') hoặc (' + ri('OPERAND2') + ')');
+    case 'operator_not': return cond('không phải (' + ri('OPERAND') + ')');
+    case 'operator_join': return `nối ${ri('STRING1')} với ${ri('STRING2')}`;
+    case 'operator_letter_of': return `ký tự thứ ${ri('LETTER')} của ${ri('STRING')}`;
+    case 'operator_length': return `độ dài của ${ri('STRING')}`;
+    case 'operator_contains': return cond(ri('STRING1') + ' có chứa ' + ri('STRING2') + '?');
+    case 'operator_mod': return `(${ri('NUM1')} chia lấy dư ${ri('NUM2')})`;
+    case 'operator_round': return `làm tròn(${ri('NUM')})`;
+    case 'operator_mathop': {
+      const fn = rf('OPERATOR');
+      const m = {'abs':'trị tuyệt đối','floor':'làm tròn xuống','ceiling':'làm tròn lên','sqrt':'căn bậc hai','sin':'sin','cos':'cos','tan':'tan','asin':'arcsin','acos':'arccos','atan':'arctan','ln':'ln','log':'log','e ^':'e mũ','10 ^':'10 mũ'};
+      return `${m[fn]||fn}(${ri('NUM')})`;
+    }
+    case 'sensing_touchingobject': return cond('đang chạm ' + ri('TOUCHINGOBJECTMENU') + '?');
+    case 'sensing_touchingcolor': return cond('đang chạm màu ' + ri('COLOR') + '?');
+    case 'sensing_coloristouchingcolor': return cond('màu ' + ri('COLOR') + ' chạm màu ' + ri('COLOR2') + '?');
+    case 'sensing_distanceto': return `khoảng cách đến ${ri('DISTANCETOMENU')}`;
+    case 'sensing_answer': return 'câu trả lời';
+    case 'sensing_keypressed': return cond('phím ' + ri('KEY_OPTION') + ' đang nhấn?');
+    case 'sensing_mousedown': return cond('chuột đang nhấn?');
+    case 'sensing_mousex': return 'tọa độ x chuột';
+    case 'sensing_mousey': return 'tọa độ y chuột';
+    case 'sensing_loudness': return 'độ ồn';
+    case 'sensing_timer': return 'đồng hồ đếm';
+    case 'sensing_of': {
+      const prop = rf('PROPERTY');
+      const pm = {'x position':'tọa độ x','y position':'tọa độ y','direction':'hướng','costume #':'số trang phục','costume name':'tên trang phục','backdrop #':'số phông nền','backdrop name':'tên phông nền','size':'kích thước','volume':'âm lượng'};
+      return `${pm[prop]||prop} của ${ri('OBJECT')}`;
+    }
+    case 'sensing_current': {
+      const m = rf('CURRENTMENU');
+      const cm = {'YEAR':'năm','MONTH':'tháng','DATE':'ngày','DAYOFWEEK':'thứ','HOUR':'giờ','MINUTE':'phút','SECOND':'giây'};
+      return `${cm[m]||m} hiện tại`;
+    }
+    case 'sensing_dayssince2000': return 'số ngày từ năm 2000';
+    case 'sensing_username': return 'tên người dùng';
+    case 'motion_xposition': return 'tọa độ x';
+    case 'motion_yposition': return 'tọa độ y';
+    case 'motion_direction': return 'hướng';
+    case 'looks_costumenumbername': return rf('NUMBER_NAME') === 'number' ? 'số trang phục' : 'tên trang phục';
+    case 'looks_backdropnumbername': return rf('NUMBER_NAME') === 'number' ? 'số phông nền' : 'tên phông nền';
+    case 'looks_size': return 'kích thước';
+    case 'sound_volume': return 'âm lượng';
+    case 'data_variable': return varRef('biến «' + rf('VARIABLE') + '»');
+    case 'data_listcontents': return varRef('danh sách «' + rf('LIST') + '»');
+    case 'data_itemoflist': return `phần tử ${ri('INDEX')} của ${varRef('danh sách «' + rf('LIST') + '»')}`;
+    case 'data_itemnumoflist': return `vị trí ${ri('ITEM')} trong ${varRef('danh sách «' + rf('LIST') + '»')}`;
+    case 'data_lengthoflist': return `số phần tử ${varRef('danh sách «' + rf('LIST') + '»')}`;
+    case 'data_listcontainsitem': return cond(varRef('danh sách «' + rf('LIST') + '»') + ' chứa ' + ri('ITEM') + '?');
+    case 'argument_reporter_string_number': return `[tham số "${esc(rf('VALUE'))}"]`;
+    case 'argument_reporter_boolean': return `[tham số logic "${esc(rf('VALUE'))}"]`;
+    case 'music_getTempo': return 'tempo';
+    default: return `⟨${esc(op)}⟩`;
+  }
+}
+
+// ========================================================================
+// BLOCK DESCRIPTION (for Advanced mode detailed view)
+// ========================================================================
+function describeBlock(blockId, blocks, prefix, depth) {
+  if (depth > 40) return `<div class="step"><span class="step-num">${prefix}.</span> (…quá sâu…)</div>`;
+  const block = blocks[blockId];
+  if (!block || !block.opcode) return '';
+  const ri = (n) => resolveInput(n, block, blocks, depth);
+  const rf = (n) => resolveField(n, block);
+  const op = block.opcode;
+
+  const renderSubstack = (inputName) => {
+    const inp = block.inputs && block.inputs[inputName];
+    const cls = inputName === 'SUBSTACK2' ? 'substeps-else' : 'substeps';
+    if (!inp || inp[1] === null || inp[1] === undefined) return `<div class="${cls}"><div class="step text-gray-400 italic">(không có hành động)</div></div>`;
+    const firstId = typeof inp[1] === 'string' ? inp[1] : null;
+    if (!firstId) return `<div class="${cls}"><div class="step text-gray-400 italic">(không có hành động)</div></div>`;
+    return `<div class="${cls}">${followChain(firstId, blocks, prefix, depth + 1)}</div>`;
+  };
+
+  const SIMPLE = {
+    'motion_ifonedgebounce': 'Nếu chạm cạnh, bật lại',
+    'looks_nextcostume': 'Chuyển trang phục tiếp theo',
+    'looks_nextbackdrop': 'Chuyển phông nền tiếp theo',
+    'looks_cleargraphiceffects': 'Xóa hiệu ứng đồ họa',
+    'looks_show': 'Hiện sprite',
+    'looks_hide': 'Ẩn sprite',
+    'sound_stopallsounds': 'Dừng tất cả âm thanh',
+    'sound_cleareffects': 'Xóa hiệu ứng âm thanh',
+    'control_delete_this_clone': 'Xóa bản sao này',
+    'sensing_resettimer': 'Đặt lại đồng hồ đếm',
+    'pen_clear': 'Xóa vết vẽ',
+    'pen_stamp': 'Đóng dấu sprite',
+    'pen_penDown': 'Hạ bút (bắt đầu vẽ)',
+    'pen_penUp': 'Nhấc bút (ngừng vẽ)',
+  };
+  const opcodeTag = showOpcodes ? `<code class="opcode">[${esc(op)}]</code> ` : '';
+  if (SIMPLE[op]) return `<div class="step"><span class="step-num">${prefix}.</span> ${opcodeTag}${SIMPLE[op]}</div>`;
+
+  let html = '';
+  const step = (t) => `<div class="step"><span class="step-num">${prefix}.</span> ${opcodeTag}${t}</div>`;
+
+  switch (op) {
+    case 'motion_movesteps': return step(`Di chuyển ${ri('STEPS')} bước`);
+    case 'motion_turnright': return step(`Xoay phải ${ri('DEGREES')}°`);
+    case 'motion_turnleft': return step(`Xoay trái ${ri('DEGREES')}°`);
+    case 'motion_goto': return step(`Đi đến ${ri('TO')}`);
+    case 'motion_gotoxy': return step(`Đi đến x=${ri('X')}, y=${ri('Y')}`);
+    case 'motion_glideto': return step(`Trượt đến ${ri('TO')} trong ${ri('SECS')}s`);
+    case 'motion_glidesecs': return step(`Trượt đến x=${ri('X')}, y=${ri('Y')} trong ${ri('SECS')}s`);
+    case 'motion_pointindirection': return step(`Đặt hướng = ${ri('DIRECTION')}°`);
+    case 'motion_pointtowards': return step(`Quay về phía ${ri('TOWARDS')}`);
+    case 'motion_changexby': return step(`Thay đổi x thêm ${ri('DX')}`);
+    case 'motion_setx': return step(`Đặt x = ${ri('X')}`);
+    case 'motion_changeyby': return step(`Thay đổi y thêm ${ri('DY')}`);
+    case 'motion_sety': return step(`Đặt y = ${ri('Y')}`);
+    case 'motion_setrotationstyle': return step(`Kiểu xoay: "${esc(rf('STYLE'))}"`);
+    case 'looks_sayforsecs': return step(`Nói "${ri('MESSAGE')}" trong ${ri('SECS')}s`);
+    case 'looks_say': return step(`Nói "${ri('MESSAGE')}"`);
+    case 'looks_thinkforsecs': return step(`Nghĩ "${ri('MESSAGE')}" trong ${ri('SECS')}s`);
+    case 'looks_think': return step(`Nghĩ "${ri('MESSAGE')}"`);
+    case 'looks_switchcostumeto': return step(`Đổi trang phục: ${ri('COSTUME')}`);
+    case 'looks_switchbackdropto': return step(`Đổi phông nền: ${ri('BACKDROP')}`);
+    case 'looks_changesizeby': return step(`Thay đổi kích thước thêm ${ri('CHANGE')}%`);
+    case 'looks_setsizeto': return step(`Đặt kích thước = ${ri('SIZE')}%`);
+    case 'looks_changeeffectby': return step(`Thay đổi hiệu ứng "${esc(rf('EFFECT'))}" thêm ${ri('CHANGE')}`);
+    case 'looks_seteffectto': return step(`Đặt hiệu ứng "${esc(rf('EFFECT'))}" = ${ri('VALUE')}`);
+    case 'looks_gotofrontback': return step(rf('FRONT_BACK') === 'front' ? 'Đưa lên trước' : 'Đưa ra sau');
+    case 'looks_goforwardbackwardlayers': return step(`Di chuyển ${rf('FORWARD_BACKWARD') === 'forward' ? 'lên' : 'xuống'} ${ri('NUM')} lớp`);
+    case 'sound_playuntildone': return step(`Phát ${ri('SOUND_MENU')} (đợi xong)`);
+    case 'sound_play': return step(`Phát ${ri('SOUND_MENU')}`);
+    case 'sound_changeeffectby': return step(`Thay đổi hiệu ứng âm "${esc(rf('EFFECT'))}" thêm ${ri('VALUE')}`);
+    case 'sound_seteffectto': return step(`Đặt hiệu ứng âm "${esc(rf('EFFECT'))}" = ${ri('VALUE')}`);
+    case 'sound_changevolumeby': return step(`Thay đổi âm lượng thêm ${ri('VOLUME')}`);
+    case 'sound_setvolumeto': return step(`Đặt âm lượng = ${ri('VOLUME')}%`);
+    case 'event_broadcast': return step(`Gửi broadcast "${ri('BROADCAST_INPUT')}"`);
+    case 'event_broadcastandwait': return step(`Gửi broadcast "${ri('BROADCAST_INPUT')}" và ${kw('đợi')}`);
+    case 'control_wait': return step(`${kw('Đợi')} ${ri('DURATION')}s`);
+    case 'control_forever':
+      html = `<div class="step"><span class="step-num">${prefix}.</span> ${opcodeTag}${kw('Vòng lặp vô hạn.')} Mỗi vòng thực hiện:</div>`;
+      html += renderSubstack('SUBSTACK');
+      html += `<div class="step text-gray-400 text-xs italic ml-6">↻ Lặp lại mãi mãi</div>`;
+      return html;
+    case 'control_repeat':
+      html = `<div class="step"><span class="step-num">${prefix}.</span> ${opcodeTag}${kw('Lặp')} ${ri('TIMES')} ${kw('lần:')} </div>`;
+      html += renderSubstack('SUBSTACK');
+      return html;
+    case 'control_repeat_until':
+      html = `<div class="step"><span class="step-num">${prefix}.</span> ${opcodeTag}${kw('Lặp cho đến khi')} ${cond(ri('CONDITION'))}:</div>`;
+      html += renderSubstack('SUBSTACK');
+      return html;
+    case 'control_if':
+      html = `<div class="step"><span class="step-num">${prefix}.</span> ${opcodeTag}${kw('Nếu')} ${cond(ri('CONDITION'))} ${kw('thì:')}</div>`;
+      html += renderSubstack('SUBSTACK');
+      return html;
+    case 'control_if_else':
+      html = `<div class="step"><span class="step-num">${prefix}.</span> ${opcodeTag}${kw('Nếu')} ${cond(ri('CONDITION'))} ${kw('thì:')}</div>`;
+      html += renderSubstack('SUBSTACK');
+      html += `<div class="step"><span class="step-num"></span> ${kw('Ngược lại:')}</div>`;
+      html += renderSubstack('SUBSTACK2');
+      return html;
+    case 'control_wait_until': return step(`${kw('Đợi cho đến khi')} ${cond(ri('CONDITION'))}`);
+    case 'control_stop': {
+      const opt = rf('STOP_OPTION');
+      const sm = {'all':'tất cả','this script':'script này','other scripts in sprite':'script khác của sprite'};
+      return step(`${kw('Dừng')} ${sm[opt]||opt}`);
+    }
+    case 'control_create_clone_of': return step(`Tạo bản sao của ${ri('CLONE_OPTION')}`);
+    case 'data_setvariableto': return step(`Đặt ${varRef('«' + rf('VARIABLE') + '»')} = ${ri('VALUE')}`);
+    case 'data_changevariableby': return step(`Thay đổi ${varRef('«' + rf('VARIABLE') + '»')} thêm ${ri('VALUE')}`);
+    case 'data_showvariable': return step(`Hiện biến ${varRef('«' + rf('VARIABLE') + '»')}`);
+    case 'data_hidevariable': return step(`Ẩn biến ${varRef('«' + rf('VARIABLE') + '»')}`);
+    case 'data_addtolist': return step(`Thêm ${ri('ITEM')} vào ${varRef('«' + rf('LIST') + '»')}`);
+    case 'data_deleteoflist': return step(`Xóa phần tử ${ri('INDEX')} khỏi ${varRef('«' + rf('LIST') + '»')}`);
+    case 'data_deletealloflist': return step(`Xóa tất cả khỏi ${varRef('«' + rf('LIST') + '»')}`);
+    case 'data_insertatlist': return step(`Chèn ${ri('ITEM')} vào vị trí ${ri('INDEX')} của ${varRef('«' + rf('LIST') + '»')}`);
+    case 'data_replaceitemoflist': return step(`Thay phần tử ${ri('INDEX')} trong ${varRef('«' + rf('LIST') + '»')} = ${ri('ITEM')}`);
+    case 'data_showlist': return step(`Hiện ${varRef('«' + rf('LIST') + '»')}`);
+    case 'data_hidelist': return step(`Ẩn ${varRef('«' + rf('LIST') + '»')}`);
+    case 'sensing_askandwait': return step(`Hỏi "${ri('QUESTION')}" và đợi`);
+    case 'sensing_setdragmode': return step(`Chế độ kéo: "${rf('DRAG_MODE')}"`);
+    case 'pen_setPenColorToColor': return step(`Đặt màu bút = ${ri('COLOR')}`);
+    case 'pen_changePenColorParamBy': return step(`Thay đổi ${ri('COLOR_PARAM')} bút thêm ${ri('VALUE')}`);
+    case 'pen_setPenColorParamTo': return step(`Đặt ${ri('COLOR_PARAM')} bút = ${ri('VALUE')}`);
+    case 'pen_changePenSizeBy': return step(`Thay đổi nét bút thêm ${ri('SIZE')}`);
+    case 'pen_setPenSizeTo': return step(`Đặt nét bút = ${ri('SIZE')}`);
+    case 'procedures_definition': {
+      const pi = block.inputs && block.inputs['custom_block'];
+      let pn = '???';
+      if (pi && typeof pi[1] === 'string' && blocks[pi[1]] && blocks[pi[1]].mutation) pn = blocks[pi[1]].mutation.proccode;
+      return step(`${kw('Định nghĩa khối:')} "${esc(pn)}"`);
+    }
+    case 'procedures_call': {
+      const mut = block.mutation;
+      if (!mut) return step('Gọi khối tùy chỉnh');
+      const pc = mut.proccode || '???';
+      const aids = mut.argumentids ? JSON.parse(mut.argumentids) : [];
+      let parts = [], ai = 0, li = 0;
+      const rx = /%[sb]/g;
+      let m;
+      while ((m = rx.exec(pc)) !== null) { if (m.index > li) parts.push(esc(pc.substring(li, m.index))); const aid = aids[ai++]; parts.push(aid && block.inputs && block.inputs[aid] ? resolveInput(aid, block, blocks, depth) : '???'); li = rx.lastIndex; }
+      if (li < pc.length) parts.push(esc(pc.substring(li)));
+      return step(`Gọi: "${parts.join('')}"`);
+    }
+    case 'procedures_prototype': return '';
+    case 'music_playDrumForBeats': return step(`Trống ${ri('DRUM')} trong ${ri('BEATS')} nhịp`);
+    case 'music_restForBeats': return step(`Nghỉ ${ri('BEATS')} nhịp`);
+    case 'music_playNoteForBeats': return step(`Nốt ${ri('NOTE')} trong ${ri('BEATS')} nhịp`);
+    case 'music_setInstrument': return step(`Nhạc cụ: ${ri('INSTRUMENT')}`);
+    case 'music_setTempo': return step(`Tempo = ${ri('TEMPO')}`);
+    case 'music_changeTempo': return step(`Thay đổi tempo thêm ${ri('TEMPO')}`);
+    case 'text2speech_speakAndWait': return step(`Đọc "${ri('WORDS')}" và đợi`);
+    case 'text2speech_setVoice': return step(`Giọng: ${ri('VOICE')}`);
+    case 'text2speech_setLanguage': return step(`Ngôn ngữ: ${ri('LANGUAGE')}`);
+    default: {
+      let id = '';
+      if (block.inputs) { const p = []; for (const k in block.inputs) { if (k === 'SUBSTACK' || k === 'SUBSTACK2') continue; p.push(`${k}=${ri(k)}`); } if (p.length) id = ` (${p.join(', ')})`; }
+      return step(`<span class="text-gray-500">[${esc(op)}]${id}</span>`);
+    }
+  }
+}
+
+function followChain(startId, blocks, parentPrefix, depth) {
+  let html = '', currentId = startId, stepNum = 1;
+  while (currentId) {
+    const block = blocks[currentId];
+    if (!block) break;
+    if (block.opcode === 'procedures_prototype') { currentId = block.next; continue; }
+    const prefix = parentPrefix ? `${parentPrefix}.${stepNum}` : `${stepNum}`;
+    html += describeBlock(currentId, blocks, prefix, depth);
+    stepNum++;
+    currentId = block.next;
+  }
+  return html;
+}
+
+// ========================================================================
+// HAT BLOCKS & EVENTS
+// ========================================================================
+const HAT_OPCODES = new Set([
+  'event_whenflagclicked','event_whenkeypressed','event_whenthisspriteclicked',
+  'event_whenstageclicked','event_whenbackdropswitchesto','event_whengreaterthan',
+  'event_whenbroadcastreceived','control_start_as_clone','procedures_definition',
+  'videoSensing_whenMotionGreaterThan','makeymakey_whenMakeyKeyPressed','makeymakey_whenCodePressed'
+]);
+
+function findHatBlocks(blocks) {
+  const hats = [];
+  for (const id in blocks) {
+    const b = blocks[id];
+    if (!b || typeof b !== 'object' || Array.isArray(b)) continue;
+    if (!b.topLevel || !b.opcode) continue;
+    if (HAT_OPCODES.has(b.opcode)) hats.push(id);
+  }
+  return hats;
+}
+
+function getEventDescription(block, blocks) {
+  const rf = (n) => resolveField(n, block);
+  const ri = (n) => resolveInput(n, block, blocks, 0);
+  switch (block.opcode) {
+    case 'event_whenflagclicked': return { text: '🟢 Khi nhấn cờ xanh', cls: 'event-flag' };
+    case 'event_whenkeypressed': return { text: `⌨️ Khi nhấn phím "${esc(rf('KEY_OPTION'))}"`, cls: 'event-key' };
+    case 'event_whenthisspriteclicked': return { text: '🖱️ Khi sprite được nhấp', cls: 'event-click' };
+    case 'event_whenstageclicked': return { text: '🖱️ Khi Stage được nhấp', cls: 'event-click' };
+    case 'event_whenbackdropswitchesto': return { text: `🎭 Khi phông nền → "${esc(rf('BACKDROP'))}"`, cls: 'event-other' };
+    case 'event_whengreaterthan': {
+      const m = rf('WHENGREATERTHANMENU');
+      return { text: `📊 Khi ${m==='LOUDNESS'?'độ ồn':'đồng hồ'} > ${ri('VALUE')}`, cls: 'event-other' };
+    }
+    case 'event_whenbroadcastreceived': return { text: `📨 Khi nhận "${esc(rf('BROADCAST_OPTION'))}"`, cls: 'event-broadcast' };
+    case 'control_start_as_clone': return { text: '🐑 Khi bản sao được tạo', cls: 'event-clone' };
+    case 'procedures_definition': {
+      const pi = block.inputs && block.inputs['custom_block'];
+      let pn = '???';
+      if (pi && typeof pi[1] === 'string' && blocks[pi[1]] && blocks[pi[1]].mutation) pn = blocks[pi[1]].mutation.proccode;
+      return { text: `🧩 Khối: "${esc(pn)}"`, cls: 'event-custom' };
+    }
+    default: return { text: `▶️ ${esc(block.opcode)}`, cls: 'event-other' };
+  }
+}
+
+// ========================================================================
+// PATTERN SCANNING — Quét pattern của từng chuỗi block
+// ========================================================================
+function scanChainPatterns(startId, blocks) {
+  const p = {
+    hasMotion: false, setsPosition: false, hasGlide: false,
+    hasForeverLoop: false, hasRepeatLoop: false, hasConditional: false,
+    hasKeyChecks: false, keyNames: new Set(),
+    hasCollision: false, collisionTargets: new Set(),
+    hasCloning: false, deletesClone: false,
+    hasSay: false, hasThink: false, hasAsk: false,
+    hasSound: false, hasPen: false,
+    hasCostumeChange: false, hasBackdropChange: false, hasEffects: false,
+    hasWait: false, hasWaitNoDelay: false,
+    broadcastsSent: [], broadcastsReceived: [],
+    varsSet: new Set(), varsChanged: new Set(),
+    listsModified: new Set(),
+    hasRandom: false, hasAnswer: false,
+    hasStop: false, stopType: null,
+    hasCustomCall: false, customCalls: [],
+    hasShow: false, hasHide: false,
+    blockCount: 0,
+    foreverHasWait: true, // assume true, set false if forever found without wait
+  };
+
+  const visited = new Set();
+  let insideForever = false;
+  let foreverHasWaitBlock = false;
+
+  function scan(id, inForever) {
+    if (!id || visited.has(id)) return;
+    visited.add(id);
+    const b = blocks[id];
+    if (!b || !b.opcode) return;
+    p.blockCount++;
+    const op = b.opcode;
+
+    // Motion
+    if (op.startsWith('motion_')) { p.hasMotion = true; }
+    if (op === 'motion_gotoxy' || op === 'motion_setx' || op === 'motion_sety' || op === 'motion_goto') p.setsPosition = true;
+    if (op === 'motion_glidesecs' || op === 'motion_glideto') p.hasGlide = true;
+
+    // Looks
+    if (op === 'looks_switchcostumeto' || op === 'looks_nextcostume') p.hasCostumeChange = true;
+    if (op === 'looks_switchbackdropto' || op === 'looks_nextbackdrop') p.hasBackdropChange = true;
+    if (op.includes('effect')) p.hasEffects = true;
+    if (op === 'looks_say' || op === 'looks_sayforsecs') p.hasSay = true;
+    if (op === 'looks_think' || op === 'looks_thinkforsecs') p.hasThink = true;
+    if (op === 'looks_show') p.hasShow = true;
+    if (op === 'looks_hide') p.hasHide = true;
+
+    // Sound
+    if (op.startsWith('sound_') || op.startsWith('music_')) p.hasSound = true;
+
+    // Control
+    if (op === 'control_forever') {
+      p.hasForeverLoop = true;
+      // Check if substack has wait
+      foreverHasWaitBlock = false;
+      insideForever = true;
+    }
+    if (op === 'control_repeat' || op === 'control_repeat_until') p.hasRepeatLoop = true;
+    if (op === 'control_if' || op === 'control_if_else') p.hasConditional = true;
+    if (op === 'control_wait' || op === 'control_wait_until') { p.hasWait = true; if (inForever) foreverHasWaitBlock = true; }
+    if (op === 'control_create_clone_of') p.hasCloning = true;
+    if (op === 'control_delete_this_clone') p.deletesClone = true;
+    if (op === 'control_stop') { p.hasStop = true; p.stopType = resolveField('STOP_OPTION', b); }
+
+    // Data
+    if (op === 'data_setvariableto') p.varsSet.add(resolveField('VARIABLE', b));
+    if (op === 'data_changevariableby') p.varsChanged.add(resolveField('VARIABLE', b));
+    if (op === 'data_addtolist' || op === 'data_deleteoflist' || op === 'data_deletealloflist' || op === 'data_insertatlist' || op === 'data_replaceitemoflist') p.listsModified.add(resolveField('LIST', b));
+
+    // Sensing
+    if (op === 'sensing_askandwait') p.hasAsk = true;
+
+    // Events
+    if (op === 'event_broadcast' || op === 'event_broadcastandwait') {
+      const msg = extractBroadcastName(b, blocks);
+      if (msg) p.broadcastsSent.push(msg);
+    }
+
+    // Pen
+    if (op.startsWith('pen_')) p.hasPen = true;
+
+    // Custom blocks
+    if (op === 'procedures_call') {
+      p.hasCustomCall = true;
+      if (b.mutation && b.mutation.proccode) p.customCalls.push(b.mutation.proccode);
+    }
+
+    // Scan reporter inputs for sensing patterns
+    if (b.inputs) {
+      for (const key in b.inputs) {
+        const inp = b.inputs[key];
+        if (inp && typeof inp[1] === 'string' && blocks[inp[1]]) scanReporter(inp[1], blocks, p);
+        if (inp && inp[0] === 3 && typeof inp[1] === 'string' && blocks[inp[1]]) scanReporter(inp[1], blocks, p);
+      }
+    }
+
+    // Follow substacks
+    if (b.inputs) {
+      const isForever = op === 'control_forever';
+      if (b.inputs.SUBSTACK && b.inputs.SUBSTACK[1] && typeof b.inputs.SUBSTACK[1] === 'string')
+        scan(b.inputs.SUBSTACK[1], inForever || isForever);
+      if (b.inputs.SUBSTACK2 && b.inputs.SUBSTACK2[1] && typeof b.inputs.SUBSTACK2[1] === 'string')
+        scan(b.inputs.SUBSTACK2[1], inForever || isForever);
+    }
+
+    if (b.next) scan(b.next, inForever);
+  }
+
+  scan(startId, false);
+// Post-process: check forever loop wait
+if (p.hasForeverLoop && !p.hasWait && !p.hasSay && !p.hasGlide && !p.hasSound) {
+p.foreverHasWait = false;
+}
+return p;
+}
+function scanReporter(blockId, blocks, patterns) {
+const b = blocks[blockId];
+if (!b) return;
+if (b.opcode === 'sensing_keypressed') {
+patterns.hasKeyChecks = true;
+const keyInp = b.inputs && b.inputs['KEY_OPTION'];
+if (keyInp && keyInp[1] && typeof keyInp[1] === 'string' && blocks[keyInp[1]]) {
+const kb = blocks[keyInp[1]];
+if (kb && kb.fields && kb.fields['KEY_OPTION']) patterns.keyNames.add(kb.fields['KEY_OPTION'][0]);
+}
+}
+if (b.opcode === 'sensing_touchingobject') {
+patterns.hasCollision = true;
+const ti = b.inputs && b.inputs['TOUCHINGOBJECTMENU'];
+if (ti && ti[1] && typeof ti[1] === 'string' && blocks[ti[1]]) {
+const tb = blocks[ti[1]];
+if (tb && tb.fields && tb.fields['TOUCHINGOBJECTMENU']) patterns.collisionTargets.add(tb.fields['TOUCHINGOBJECTMENU'][0]);
+}
+}
+if (b.opcode === 'sensing_answer') patterns.hasAnswer = true;
+if (b.opcode === 'operator_random') patterns.hasRandom = true;
+if (b.opcode === 'sensing_mousedown' || b.opcode === 'sensing_mousex' || b.opcode === 'sensing_mousey') patterns.hasKeyChecks = true;
+// Recurse
+if (b.inputs) {
+for (const k in b.inputs) {
+const inp = b.inputs[k];
+if (inp && typeof inp[1] === 'string' && blocks[inp[1]]) scanReporter(inp[1], blocks, patterns);
+}
+}
+}
+function extractBroadcastName(block, blocks) {
+const inp = block.inputs && block.inputs['BROADCAST_INPUT'];
+if (!inp) return null;
+if (inp[0] === 1 && Array.isArray(inp[1])) return inp[1][1];
+if (inp[0] === 3) {
+if (inp[1] && typeof inp[1] === 'string' && blocks[inp[1]]) return null;
+if (inp[2] && Array.isArray(inp[2])) return inp[2][1];
+}
+return null;
+}
+// ========================================================================
+// ROLE DETECTION
+// ========================================================================
+function detectSpriteRole(name, isStage, agg) {
+if (isStage) {
+const reasons = ['Stage luôn đóng vai trò quản lý nền'];
+if (agg.broadcastsSent.size > 2) reasons.push('Gửi ' + agg.broadcastsSent.size + ' broadcast → điều phối nhiều sprite');
+if (agg.hasBackdropChange) reasons.push('Quản lý chuyển phông nền');
+if (agg.allVarsSet.size > 0) reasons.push('Khởi tạo biến toàn cục');
+const conf = (agg.broadcastsSent.size > 2 || agg.hasBackdropChange) ? 90 : 75;
+const desc = (agg.broadcastsSent.size > 2 || agg.hasBackdropChange) ? 'Điều phối game / Quản lý cảnh' : 'Nền và quản lý chung';
+return { role: 'controller', desc, cls: 'role-controller', confidence: conf, reasons };
+}
+const hasKeys = agg.hasKeyControls;
+const isCloned = agg.hasCloneStart;
+const doesClone = agg.hasCloning;
+const hasCollision = agg.hasCollision;
+const hasMotion = agg.hasMotion;
+const modifiesScore = [...agg.allVarsChanged].some(v => /score|điểm|point/i.test(v));
+const modifiesLife = [...agg.allVarsChanged].some(v => /life|mạng|health|hp/i.test(v));
+const nameSuggestsBullet = /bullet|đạn|projectile|shot|arrow|laser|beam|fire|bắn|tên/i.test(name);
+const nameSuggestsEnemy = /enemy|địch|monster|quái|obstacle|chướng|boss|zombie|alien|spider|bat/i.test(name);
+const nameSuggestsItem = /coin|xu|item|vật phẩm|star|sao|gem|heart|tim|collect|power|apple|fruit/i.test(name);
+// ===== PLAYER =====
+if (hasKeys && hasMotion && !isCloned) {
+const reasons = ['Điều khiển bằng phím bấm', 'Có block di chuyển', 'Không phải bản sao (clone)'];
+let conf = 85;
+if (agg.hasForeverLoop) { conf += 5; reasons.push('Có vòng lặp chính kiểm tra phím'); }
+if (hasCollision) { conf += 3; reasons.push('Kiểm tra va chạm với đối tượng khác'); }
+return { role: 'player', desc: 'Nhân vật chính (điều khiển bằng phím)', cls: 'role-player', confidence: Math.min(conf, 95), reasons };
+}
+// ===== CLONED SPRITES: Scoring-based classification =====
+if (isCloned) {
+let bulletScore = 0, enemyScore = 0, collectScore = 0, entityScore = 0;
+const bulletR = [], enemyR = [], collectR = [], entityR = [];
+// Motion
+if (hasMotion) { bulletScore += 2; enemyScore += 2; entityScore += 2; }
+
+// Self-deletion pattern
+if (agg.deletesClone) {
+  bulletScore += 3; bulletR.push('Tự xóa bản sao');
+  collectScore += 2; collectR.push('Tự xóa sau tương tác');
+  enemyScore += 1;
+}
+
+// Complexity
+if (agg.blockCount < 35) {
+  bulletScore += 2; bulletR.push('Logic đơn giản (' + agg.blockCount + ' block)');
+} else {
+  enemyScore += 2; enemyR.push('Logic phức tạp (' + agg.blockCount + ' block)');
+}
+
+// Forever loop = movement pattern = more like enemy
+if (agg.hasForeverLoop) {
+  enemyScore += 3; enemyR.push('Có vòng lặp di chuyển/hành vi');
+  entityScore += 2;
+} else {
+  bulletScore += 2; bulletR.push('Không có vòng lặp phức tạp');
+}
+
+// Collision behavior
+if (hasCollision) {
+  enemyScore += 2; enemyR.push('Kiểm tra va chạm');
+  collectScore += 2; collectR.push('Kiểm tra va chạm');
+  const collidesEdge = [...agg.collisionTargets].some(t => /_edge_/i.test(t));
+  if (collidesEdge) { bulletScore += 2; bulletR.push('Kiểm tra va chạm cạnh màn hình'); }
+} else {
+  bulletScore += 1;
+}
+
+// Variable modifications
+if (modifiesScore && !modifiesLife) {
+  collectScore += 3; collectR.push('Thay đổi biến điểm số');
+  bulletScore += 1;
+}
+if (modifiesLife) {
+  enemyScore += 3; enemyR.push('Thay đổi biến mạng/health');
+}
+
+// Name-based hints (strong signals)
+if (nameSuggestsBullet) { bulletScore += 4; bulletR.push('Tên "' + name + '" gợi ý đạn/vật thể bắn'); }
+if (nameSuggestsEnemy) { enemyScore += 4; enemyR.push('Tên "' + name + '" gợi ý kẻ địch'); }
+if (nameSuggestsItem) { collectScore += 4; collectR.push('Tên "' + name + '" gợi ý vật phẩm'); }
+
+// Negative signals
+if (hasKeys) { bulletScore -= 5; enemyScore -= 3; }
+
+const candidates = [
+  { role: 'projectile', score: bulletScore, desc: 'Đạn / Vật thể bắn ra', cls: 'role-projectile', reasons: ['Được tạo từ clone', ...bulletR] },
+  { role: 'enemy', score: enemyScore, desc: 'Kẻ địch / Chướng ngại vật', cls: 'role-enemy', reasons: ['Được tạo từ clone', ...enemyR] },
+  { role: 'collectible', score: collectScore, desc: 'Vật phẩm thu thập', cls: 'role-collectible', reasons: ['Được tạo từ clone', ...collectR] },
+  { role: 'entity', score: entityScore, desc: 'Đối tượng clone', cls: 'role-entity', reasons: ['Được tạo từ clone', ...entityR] },
+];
+candidates.sort((a, b) => b.score - a.score);
+const best = candidates[0];
+const second = candidates[1];
+const gap = best.score - second.score;
+
+let confidence;
+if (gap >= 5) confidence = 85;
+else if (gap >= 3) confidence = 70;
+else if (gap >= 1) confidence = 55;
+else confidence = 40;
+
+if (gap <= 2 && second.score > 0) {
+  best.reasons.push('⚠️ Cũng có thể là: ' + second.desc + ' (chênh lệch điểm: ' + gap + ')');
+  if (confidence > 50) confidence = 50;
+}
+return { role: best.role, desc: best.desc, cls: best.cls, confidence: Math.min(confidence, 95), reasons: best.reasons };}
+// ===== NON-CLONED, NON-KEY-CONTROLLED =====
+if (doesClone) {
+const reasons = ['Tạo bản sao (clone) của sprite khác hoặc chính mình'];
+let conf = 70;
+if (agg.broadcastsSent.size > 0) { conf += 10; reasons.push('Gửi broadcast điều phối'); }
+return { role: 'controller', desc: 'Nguồn tạo bản sao', cls: 'role-controller', confidence: Math.min(conf, 85), reasons };
+}
+if (agg.hasClickHandlers && (agg.hasSay || agg.broadcastsSent.size > 0) && !hasMotion) {
+const reasons = ['Phản hồi click chuột', 'Không có di chuyển'];
+if (agg.hasSay) reasons.push('Hiển thị text');
+if (agg.broadcastsSent.size > 0) reasons.push('Gửi broadcast khi nhấp');
+return { role: 'ui', desc: 'Nút bấm / Giao diện', cls: 'role-ui', confidence: 75, reasons };
+}
+if (hasMotion && hasCollision) {
+return { role: 'entity', desc: 'Đối tượng tương tác', cls: 'role-entity', confidence: 60, reasons: ['Có di chuyển', 'Kiểm tra va chạm', 'Không điều khiển bằng phím, không phải clone'] };
+}
+if (hasKeys && !hasMotion) {
+return { role: 'player', desc: 'Nhân vật (điều khiển bằng phím, không di chuyển trực tiếp)', cls: 'role-player', confidence: 55, reasons: ['Có điều khiển bằng phím', 'Không có block di chuyển trực tiếp — có thể dùng cách khác'] };
+}
+if (hasMotion) {
+return { role: 'entity', desc: 'Đối tượng di chuyển', cls: 'role-entity', confidence: 55, reasons: ['Có di chuyển', 'Không rõ vai trò cụ thể'] };
+}
+if (agg.hasSay || agg.hasAsk) {
+return { role: 'ui', desc: 'Hiển thị thông tin / Hội thoại', cls: 'role-ui', confidence: 60, reasons: ['Hiển thị text hoặc hỏi người dùng'] };
+}
+if (agg.hasPen) {
+return { role: 'entity', desc: 'Vẽ bằng bút', cls: 'role-entity', confidence: 65, reasons: ['Sử dụng block bút vẽ'] };
+}
+return { role: 'decoration', desc: 'Trang trí / Phụ trợ', cls: 'role-decoration', confidence: 40, reasons: ['Không phát hiện logic tương tác đáng kể', 'Có thể là hình nền, trang trí, hoặc sprite chưa hoàn thiện'] };
+}
+function detectProjectType(gp) {
+if (gp.penBlocks > 5) return { genre: 'art', desc: '🎨 Dự án vẽ / Nghệ thuật' };
+if (gp.askBlocks > 3) return { genre: 'quiz', desc: '❓ Trò chơi hỏi đáp / Quiz' };
+if (gp.musicBlocks > 5) return { genre: 'music', desc: '🎵 Dự án âm nhạc' };
+if (gp.keyHandlers > 0 && gp.cloneBlocks > 0 && gp.collisionChecks > 0) {
+if (gp.gravityLike) return { genre: 'platformer', desc: '🏃 Game nhảy (Platformer)' };
+return { genre: 'arcade', desc: '🕹️ Game Arcade / Hành động' };
+}
+if (gp.keyHandlers > 0 && gp.collisionChecks > 0) return { genre: 'game', desc: '🎮 Trò chơi tương tác' };
+if (gp.keyHandlers > 0 && gp.motionBlocks > 5) return { genre: 'game', desc: '🎮 Trò chơi điều khiển' };
+if (gp.backdropSwitches > 2 && gp.broadcastCount > 3) return { genre: 'story', desc: '📖 Câu chuyện / Hoạt hình' };
+if (gp.backdropSwitches > 0 && gp.sayBlocks > 3) return { genre: 'story', desc: '📖 Câu chuyện / Trình chiếu' };
+if (gp.clickHandlers > 3) return { genre: 'clicker', desc: '🖱️ Game nhấp chuột' };
+if (gp.cloneBlocks > 0 && gp.collisionChecks > 0) return { genre: 'arcade', desc: '🕹️ Game Arcade' };
+if (gp.blockCount > 100 && gp.varCount > 5) return { genre: 'simulation', desc: '⚙️ Mô phỏng / Dự án phức tạp' };
+if (gp.blockCount < 20) return { genre: 'simple', desc: '✨ Dự án đơn giản / Thử nghiệm' };
+return { genre: 'general', desc: '📦 Dự án Scratch đa dụng' };
+}
+// ========================================================================
+// ANALYSIS ENGINE — Returns structured data, no rendering
+// ========================================================================
+function analyzeProject(project, fileName) {
+const targets = project.targets || [];
+if (!targets.length) { showError('Project không có targets.'); return null; }
+targets.sort((a, b) => a.isStage === b.isStage ? 0 : a.isStage ? -1 : 1);
+// Global pattern counters
+const gp = {
+blockCount: 0, varCount: 0, listCount: 0,
+keyHandlers: 0, clickHandlers: 0, cloneBlocks: 0,
+collisionChecks: 0, motionBlocks: 0, sayBlocks: 0,
+askBlocks: 0, penBlocks: 0, musicBlocks: 0,
+backdropSwitches: 0, broadcastCount: 0,
+gravityLike: false, costumeCount: 0, soundCount: 0,
+};
+const allVars = [];
+const allLists = [];
+const allBroadcastsSent = new Set();
+const allBroadcastsReceived = new Set();
+const varModifiers = {}; // varName -> [{sprite, event}]
+const spritesData = [];
+for (const target of targets) {
+const blocks = target.blocks || {};
+let tBlockCount = 0;
+for (const id in blocks) { const b = blocks[id]; if (b && typeof b === 'object' && !Array.isArray(b) && b.opcode) tBlockCount++; }
+gp.blockCount += tBlockCount;
+gp.costumeCount += (target.costumes || []).length;
+gp.soundCount += (target.sounds || []).length;const vars = target.variables || {};
+for (const vid in vars) { gp.varCount++; allVars.push({ name: vars[vid][0], value: vars[vid][1], scope: target.isStage ? 'toàn cục' : `sprite "${target.name}"`, targetName: target.name }); }
+const lists = target.lists || {};
+for (const lid in lists) { gp.listCount++; allLists.push({ name: lists[lid][0], items: lists[lid][1], scope: target.isStage ? 'toàn cục' : `sprite "${target.name}"`, targetName: target.name }); }
+
+// Scan blocks for global patterns
+for (const id in blocks) {
+  const b = blocks[id];
+  if (!b || !b.opcode) continue;
+  const op = b.opcode;
+  if (op.startsWith('motion_')) gp.motionBlocks++;
+  if (op === 'control_create_clone_of') gp.cloneBlocks++;
+  if (op === 'looks_say' || op === 'looks_sayforsecs') gp.sayBlocks++;
+  if (op === 'sensing_askandwait') gp.askBlocks++;
+  if (op.startsWith('pen_')) gp.penBlocks++;
+  if (op.startsWith('music_')) gp.musicBlocks++;
+  if (op === 'looks_switchbackdropto' || op === 'looks_nextbackdrop') gp.backdropSwitches++;
+  if (op === 'event_whenkeypressed') gp.keyHandlers++;
+  if (op === 'event_whenthisspriteclicked' || op === 'event_whenstageclicked') gp.clickHandlers++;
+  // Detect gravity-like pattern: changeyby with negative in forever
+  if (op === 'motion_changeyby') {
+    const yInput = b.inputs && b.inputs['DY'];
+    if (yInput && Array.isArray(yInput[1]) && Number(yInput[1][1]) < 0) gp.gravityLike = true;
+  }
+}
+
+// Find hat blocks
+const hats = findHatBlocks(blocks);
+const spriteAgg = {
+  hasMotion: false, hasKeyControls: false, hasClickHandlers: false,
+  hasCollision: false, hasCloning: false, hasCloneStart: false,
+  deletesClone: false, hasForeverLoop: false,
+  hasSay: false, hasAsk: false, hasPen: false, hasSound: false,
+  hasBackdropChange: false, hasCostumeChange: false,
+  broadcastsSent: new Set(), broadcastsReceived: new Set(),
+  allVarsSet: new Set(), allVarsChanged: new Set(),
+  collisionTargets: new Set(), keyNames: new Set(),
+  blockCount: tBlockCount,
+};
+
+const scriptsData = [];
+for (const hatId of hats) {
+  const hat = blocks[hatId];
+  if (!hat) continue;
+  const evDesc = getEventDescription(hat, blocks);
+  const chainP = scanChainPatterns(hatId, blocks);
+
+  // Merge chain patterns into sprite aggregate
+  if (chainP.hasMotion) spriteAgg.hasMotion = true;
+  if (chainP.hasKeyChecks) { spriteAgg.hasKeyControls = true; chainP.keyNames.forEach(k => spriteAgg.keyNames.add(k)); }
+  if (chainP.hasCollision) { spriteAgg.hasCollision = true; chainP.collisionTargets.forEach(t => spriteAgg.collisionTargets.add(t)); }
+  if (chainP.hasCloning) spriteAgg.hasCloning = true;
+  if (hat.opcode === 'control_start_as_clone') spriteAgg.hasCloneStart = true;
+  if (chainP.deletesClone) spriteAgg.deletesClone = true;
+  if (chainP.hasForeverLoop) spriteAgg.hasForeverLoop = true;
+  if (chainP.hasSay || chainP.hasThink) spriteAgg.hasSay = true;
+  if (chainP.hasAsk) spriteAgg.hasAsk = true;
+  if (chainP.hasPen) spriteAgg.hasPen = true;
+  if (chainP.hasSound) spriteAgg.hasSound = true;
+  if (chainP.hasBackdropChange) spriteAgg.hasBackdropChange = true;
+  if (chainP.hasCostumeChange) spriteAgg.hasCostumeChange = true;
+  if (hat.opcode === 'event_whenthisspriteclicked' || hat.opcode === 'event_whenstageclicked') spriteAgg.hasClickHandlers = true;
+  chainP.varsSet.forEach(v => spriteAgg.allVarsSet.add(v));
+  chainP.varsChanged.forEach(v => spriteAgg.allVarsChanged.add(v));
+  chainP.broadcastsSent.forEach(m => { spriteAgg.broadcastsSent.add(m); allBroadcastsSent.add(m); });
+  if (hat.opcode === 'event_whenbroadcastreceived') {
+    const bn = resolveField('BROADCAST_OPTION', hat);
+    if (bn !== '???') { spriteAgg.broadcastsReceived.add(bn); allBroadcastsReceived.add(bn); }
+  }
+
+  // Track var modifications for conflict detection
+  chainP.varsSet.forEach(v => { if (!varModifiers[v]) varModifiers[v] = []; varModifiers[v].push({ sprite: target.name, event: evDesc.text }); });
+  chainP.varsChanged.forEach(v => { if (!varModifiers[v]) varModifiers[v] = []; varModifiers[v].push({ sprite: target.name, event: evDesc.text }); });
+
+  // Pre-render detailed HTML
+  let detailedHtml = '';
+  if (hat.next) detailedHtml = followChain(hat.next, blocks, '', 0);
+
+  scriptsData.push({
+    hatId, eventDesc: evDesc,
+    chainPatterns: chainP,
+    detailedHtml,
+    blockCount: chainP.blockCount,
+  });
+}
+
+gp.broadcastCount = allBroadcastsSent.size;
+
+// Global collision checks
+if (spriteAgg.hasCollision) gp.collisionChecks++;
+
+// Also detect key checks from sensing blocks
+if (spriteAgg.hasKeyControls) gp.keyHandlers = Math.max(gp.keyHandlers, 1);
+
+const role = detectSpriteRole(target.name, target.isStage, spriteAgg);
+
+// Generate behavior summary
+const behaviors = generateBehaviors(target, spriteAgg, scriptsData);
+
+// Count orphan blocks
+    let orphanCount = 0;
+    for (const id in blocks) {
+      const b = blocks[id];
+      if (!b || typeof b !== 'object' || Array.isArray(b) || !b.topLevel || !b.opcode) continue;
+      if (HAT_OPCODES.has(b.opcode)) continue;
+      if (b.opcode === 'data_variable' || b.opcode === 'data_listcontents') continue;
+      if (b.shadow) continue;
+      if (!b.parent) orphanCount++;
+    }
+
+    spritesData.push({
+      name: target.name,
+      isStage: target.isStage,
+      role,
+      scriptCount: hats.length,
+      behaviors,
+      scripts: scriptsData,
+      agg: spriteAgg,
+      targetBlocks: blocks,
+      costumeCount: (target.costumes || []).length,
+      soundCount: (target.sounds || []).length,
+      blockCount: tBlockCount,
+      orphanCount,
+    });
+  }
+
+  const projectType = detectProjectType(gp);
+
+  // Generate warnings
+  const warnings = generateWarnings(spritesData, allBroadcastsSent, allBroadcastsReceived, varModifiers, gp);
+
+  // Generate recommendations
+  const recommendations = generateRecommendations(spritesData, warnings, gp, projectType);
+
+  // Generate TL;DR
+  const tldr = generateTLDR(spritesData, projectType, gp, allVars);
+
+  // Generate game flow
+  const gameFlow = generateGameFlow(spritesData, allBroadcastsSent, allBroadcastsReceived);
+
+  return {
+    fileName, projectType, tldr, gameFlow,
+    overview: { spriteCount: targets.filter(t => !t.isStage).length, blockCount: gp.blockCount, varCount: gp.varCount, listCount: gp.listCount, costumeCount: gp.costumeCount, soundCount: gp.soundCount },
+    variables: allVars, lists: allLists,
+    sprites: spritesData,
+    warnings, recommendations,
+    globalPatterns: gp,
+  };
+}
+
+// ========================================================================
+// BEHAVIOR SUMMARY GENERATION
+// ========================================================================
+function generateBehaviors(target, agg, scripts) {
+  const b = [];
+  if (target.isStage) {
+    if (agg.hasBackdropChange) b.push('Quản lý chuyển cảnh (phông nền)');
+    if (agg.broadcastsSent.size > 0) b.push(`Điều phối game qua broadcast: ${[...agg.broadcastsSent].slice(0, 3).join(', ')}${agg.broadcastsSent.size > 3 ? '...' : ''}`);
+    if (agg.allVarsSet.size > 0) b.push(`Khởi tạo/quản lý biến: ${[...agg.allVarsSet].slice(0, 3).join(', ')}${agg.allVarsSet.size > 3 ? '...' : ''}`);
+    if (agg.hasSound) b.push('Phát nhạc nền / âm thanh');
+    if (agg.hasAsk) b.push('Hỏi và nhận câu trả lời từ người dùng');
+    if (b.length === 0) b.push('Không có logic đáng kể');
+    return b.slice(0, 5);
+  }
+
+  // Initialization
+  const flagScripts = scripts.filter(s => s.eventDesc.text.includes('cờ xanh'));
+  if (flagScripts.length > 0) {
+    const fp = flagScripts[0].chainPatterns;
+    if (fp.setsPosition || fp.varsSet.size > 0 || fp.hasShow || fp.hasHide) b.push('Khởi tạo trạng thái khi bắt đầu game');
+  }
+
+  // Key controls
+  if (agg.hasKeyControls) {
+    const keys = [...agg.keyNames];
+    if (keys.length > 0) b.push(`Điều khiển bằng phím: ${keys.slice(0, 5).join(', ')}`);
+    else b.push('Phản hồi phím bấm / chuột');
+  }
+
+  // Main loop behavior
+  if (agg.hasForeverLoop) {
+    const parts = [];
+    if (agg.hasKeyControls && agg.hasMotion) parts.push('di chuyển theo phím');
+    else if (agg.hasMotion) parts.push('di chuyển');
+    if (agg.hasCollision) parts.push('kiểm tra va chạm');
+    if (agg.hasCostumeChange) parts.push('đổi trang phục');
+    if (agg.hasCloning) parts.push('tạo bản sao');
+    if (parts.length > 0) b.push(`Vòng lặp chính: ${parts.join(', ')}`);
+  }
+
+  // Clone behavior
+  if (agg.hasCloneStart) {
+    const cp = [];
+    if (agg.hasMotion) cp.push('di chuyển');
+    if (agg.hasCollision) cp.push('kiểm tra va chạm');
+    if (agg.deletesClone) cp.push('tự xóa khi xong');
+    b.push(`Bản sao: ${cp.length > 0 ? cp.join(', ') : 'xử lý khi được tạo'}`);
+  }
+
+  // Collision targets
+  if (agg.collisionTargets.size > 0) {
+    b.push(`Va chạm với: ${[...agg.collisionTargets].join(', ')}`);
+  }
+
+  // Broadcasts
+  if (agg.broadcastsSent.size > 0) {
+    b.push(`Gửi tín hiệu: ${[...agg.broadcastsSent].slice(0, 3).join(', ')}`);
+  }
+  if (agg.broadcastsReceived.size > 0) {
+    b.push(`Phản hồi tín hiệu: ${[...agg.broadcastsReceived].slice(0, 3).join(', ')}`);
+  }
+
+  // Variable modifications
+  const allModified = new Set([...agg.allVarsSet, ...agg.allVarsChanged]);
+  if (allModified.size > 0) {
+    const important = [...allModified].filter(v => /score|điểm|point|level|life|mạng|health|time|timer/i.test(v));
+    if (important.length > 0) b.push(`Thay đổi biến quan trọng: ${important.join(', ')}`);
+  }
+
+  // Interaction
+  if (agg.hasAsk) b.push('Hỏi và nhận câu trả lời');
+  if (agg.hasSay && !agg.hasAsk) b.push('Hiển thị hội thoại');
+  if (agg.hasPen) b.push('Vẽ trên màn hình');
+  if (agg.hasSound) b.push('Phát âm thanh');
+
+  if (b.length === 0) b.push('Không có logic đáng kể');
+  return b.slice(0, 5);
+}
+
+// ========================================================================
+// TLDR GENERATION
+// ========================================================================
+function generateTLDR(sprites, projectType, gp, vars) {
+  const lines = [];
+  lines.push(`<strong>Thể loại:</strong> ${projectType.desc}`);
+
+  // Mechanisms
+  const mechs = [];
+  if (gp.keyHandlers > 0) mechs.push('điều khiển bằng phím');
+  if (gp.cloneBlocks > 0) mechs.push('cơ chế clone');
+  if (gp.collisionChecks > 0) mechs.push('phát hiện va chạm');
+  if (gp.penBlocks > 0) mechs.push('vẽ bằng bút');
+  if (gp.askBlocks > 0) mechs.push('hỏi đáp');
+  if (gp.backdropSwitches > 0) mechs.push('chuyển cảnh');
+  if (mechs.length > 0) lines.push(`<strong>Cơ chế chính:</strong> ${mechs.join(', ')}`);
+
+  // Characters
+  const nonStage = sprites.filter(s => !s.isStage);
+  const player = nonStage.find(s => s.role.role === 'player');
+  const enemies = nonStage.filter(s => s.role.role === 'enemy');
+  if (player) lines.push(`<strong>Nhân vật chính:</strong> "${player.name}" — ${player.role.desc}`);
+  if (enemies.length > 0) lines.push(`<strong>Đối thủ:</strong> ${enemies.map(e => '"' + e.name + '"').join(', ')}`);
+
+  // Important variables
+  const scoreVars = vars.filter(v => /score|điểm|point|level|life|mạng|health|time/i.test(v.name));
+  if (scoreVars.length > 0) lines.push(`<strong>Biến quan trọng:</strong> ${scoreVars.map(v => v.name + ' = ' + v.value).join(', ')}`);
+
+  // Scale
+  lines.push(`<strong>Quy mô:</strong> ${nonStage.length} sprite, ${gp.blockCount} block, ${gp.varCount} biến, ${gp.listCount} danh sách`);
+
+  // Game flow
+  const genres = ['arcade', 'platformer', 'game', 'clicker'];
+  if (genres.includes(projectType.genre)) {
+    lines.push(`<strong>Luồng chơi:</strong> Khởi tạo → Vòng lặp game (điều khiển + kiểm tra va chạm) → Cập nhật điểm/trạng thái`);
+  } else if (projectType.genre === 'story') {
+    lines.push(`<strong>Luồng:</strong> Bắt đầu → Hội thoại/Chuyển cảnh → Kết thúc`);
+  } else if (projectType.genre === 'quiz') {
+    lines.push(`<strong>Luồng:</strong> Hỏi câu hỏi → Kiểm tra đáp án → Tính điểm`);
+  }
+
+  return lines;
+}
+
+// ========================================================================
+// GAME FLOW GENERATION
+// ========================================================================
+function generateGameFlow(sprites, sent, received) {
+  const steps = [];
+
+  // Find green flag initialization
+  const flagSprites = sprites.filter(s => s.scripts.some(sc => sc.eventDesc.text.includes('cờ xanh')));
+  if (flagSprites.length > 0) {
+    const inits = [];
+    for (const sp of flagSprites) {
+      const fs = sp.scripts.filter(sc => sc.eventDesc.text.includes('cờ xanh'));
+      for (const f of fs) {
+        if (f.chainPatterns.setsPosition || f.chainPatterns.varsSet.size > 0) inits.push(sp.name);
+        if (f.chainPatterns.hasForeverLoop) steps.push(`"${sp.name}" bắt đầu vòng lặp chính`);
+      }
+    }
+    if (inits.length > 0) steps.unshift(`Khởi tạo: ${[...new Set(inits)].join(', ')}`);
+  }
+
+  // Broadcast flow
+  if (sent.size > 0) {
+    const flows = [];
+    for (const msg of sent) {
+      const senders = sprites.filter(s => s.agg.broadcastsSent.has(msg)).map(s => s.name);
+      const receivers = sprites.filter(s => s.agg.broadcastsReceived.has(msg)).map(s => s.name);
+      if (senders.length > 0 && receivers.length > 0) {
+        flows.push(`"${msg}": ${senders.join('/')} → ${receivers.join('/')}`);
+      }
+    }
+    if (flows.length > 0) steps.push(`Tín hiệu: ${flows.slice(0, 5).join('; ')}`);
+  }
+
+  return steps;
+}
+
+// ========================================================================
+// WARNING ENGINE — 3 severity levels
+// ========================================================================
+function generateWarnings(sprites, sent, received, varMods, gp) {
+  const warnings = [];
+
+  // 🔴 Red: Dangerous bugs
+  // broadcastAndWait to non-existent receiver
+  for (const sp of sprites) {
+    for (const sc of sp.scripts) {
+      for (const msg of sc.chainPatterns.broadcastsSent) {
+        // Check if it's a broadcastAndWait — we'll flag all unmatched for now
+      }
+    }
+  }
+
+  // Variable race conditions on scoring variables
+  for (const varName in varMods) {
+    const mods = varMods[varName];
+    if (mods.length <= 1) continue;
+    const sprites_list = [...new Set(mods.map(m => m.sprite))];
+    const isScoreVar = /score|điểm|point|level|life|mạng|health/i.test(varName);
+    if (sprites_list.length > 1 && isScoreVar) {
+      warnings.push({
+        severity: 'red',
+        category: 'variable-conflict',
+        text: `Biến "${varName}" (biến quan trọng) bị thay đổi bởi ${sprites_list.length} sprite khác nhau (${sprites_list.join(', ')}). Khi chạy song song, giá trị có thể bị sai.`,
+        detail: `Các nguồn: ${mods.map(m => m.sprite + ' @ ' + m.event).join('; ')}`
+      });
+    }
+  }
+
+  // Forever loop without wait (performance)
+  for (const sp of sprites) {
+    for (const sc of sp.scripts) {
+      if (sc.chainPatterns.hasForeverLoop && !sc.chainPatterns.foreverHasWait && !sc.chainPatterns.hasWait) {
+        // Check if there's truly no delay mechanism
+        const cp = sc.chainPatterns;
+        if (!cp.hasSay && !cp.hasGlide && !cp.hasAsk && !cp.hasSound) {
+          warnings.push({
+            severity: 'red',
+            category: 'performance',
+            text: `"${sp.name}": Vòng lặp vô hạn không có block đợi/chờ bên trong. Có thể gây lag hoặc đơ trình duyệt.`,
+          });
+        }
+      }
+    }
+  }
+
+    // 🟡 Yellow: Should check
+  // Unmatched broadcasts
+  const unmatchedSent = [...sent].filter(m => !received.has(m));
+  const unmatchedReceived = [...received].filter(m => !sent.has(m));
+
+  if (unmatchedSent.length > 0) {
+    if (unmatchedSent.length <= 3) {
+      for (const msg of unmatchedSent) {
+        warnings.push({ severity: 'yellow', category: 'broadcast', text: `Broadcast "${msg}" được gửi nhưng không sprite nào nhận. Tin nhắn bị "lạc".` });
+      }
+    } else {
+      warnings.push({ severity: 'yellow', category: 'broadcast', text: `Có ${unmatchedSent.length} tin nhắn được gửi nhưng không có bên nhận.` });
+    }
+  }
+
+  if (unmatchedReceived.length > 0) {
+    for (const msg of unmatchedReceived) {
+      // Ignore some standard ones if needed, but generally show
+      warnings.push({ severity: 'yellow', category: 'broadcast', text: `Sự kiện "${msg}" được chờ đợi nhưng không bao giờ được gửi.` });
+    }
+  }
+
+  // Large script check
+  for (const s of analysis.sprites) {
+    for (const sc of s.scripts) {
+      if (sc.blockCount > 35) {
+        warnings.push({ severity: 'yellow', category: 'logic', text: `Sprite "${s.name}" có một kịch bản quá dài (${sc.blockCount} khối). Nên tách nhỏ để dễ quản lý.` });
+      }
+    }
+    // High block count total
+    if (s.blockCount > 150) {
+      warnings.push({ severity: 'yellow', category: 'performance', text: `Sprite "${s.name}" quá phức tạp (${s.blockCount} khối). Có thể gây lag trên máy yếu.` });
+    }
+  }
+
+  // Empty loops
+  for (const s of analysis.sprites) {
+    for (const sc of s.scripts) {
+      if (sc.hasForeverLoop && sc.blockCount < 3) {
+        warnings.push({ severity: 'yellow', category: 'logic', text: `Vòng lặp "mãi mãi" trong "${s.name}" có vẻ trống hoặc quá ít lệnh. Có thể gây treo trình duyệt.` });
+      }
+    }
+  }
+
+  return warnings;
+}
+
+function generateRecommendations(analysis) {
+  const recs = [];
+  const hasMultipleFlags = analysis.sprites.reduce((acc, s) => acc + s.scripts.filter(sc => sc.event === 'event_whenflagclicked').length, 0);
+
+  if (hasMultipleFlags > 8) {
+    recs.push({ category: 'structure', text: "Dự án dùng rất nhiều khối 'Khi nhấn Cờ xanh'. Hãy thử dùng Broadcast để điều khiển thứ tự bắt đầu chính xác hơn." });
+  }
+
+  const hasVariables = analysis.sprites.some(s => s.variables.length > 0) || analysis.stage.variables.length > 0;
+  if (!hasVariables) {
+    recs.push({ category: 'logic', text: "Dự án hiện chưa dùng Biến số. Hãy thử dùng biến để lưu điểm số hoặc trạng thái trò chơi." });
+  }
+
+  const complexSprites = analysis.sprites.filter(s => s.blockCount > 100);
+  if (complexSprites.length > 0) {
+    recs.push({ category: 'organization', text: "Một số nhân vật có rất nhiều code. Bạn có thể dùng 'Khối của tôi' (My Blocks) để gom các nhóm lệnh lại cho gọn." });
+  }
+
+  // Sound check
+  const hasSound = analysis.sprites.some(s => s.sounds.length > 0);
+  if (!hasSound) {
+    recs.push({ category: 'polish', text: "Thêm âm thanh hoặc nhạc nền sẽ làm dự án của bạn sinh động hơn rất nhiều!" });
+  }
+
+  // Comments check
+  // Note: Scratch project.json stores comments separately, usually not analyzed here for simplicity
+  
+  return recs;
+}
+
+// ========================================================================
+// RENDERING
+// ========================================================================
+function populateSpriteFocus() {
+  const sel = document.getElementById('spriteFocus');
+  sel.innerHTML = '<option value="">📋 Tất cả nhân vật</option>';
+  
+  // Stage first
+  const optStage = document.createElement('option');
+  optStage.value = '_stage_';
+  optStage.textContent = '🖼️ Phông nền (Stage)';
+  sel.appendChild(optStage);
+
+  globalAnalysisData.sprites.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.name;
+    opt.textContent = `👾 ${s.name}`;
+    sel.appendChild(opt);
+  });
+}
+
+function switchLevel(lvl) {
+  currentLevel = lvl;
+  document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active', 'bg-blue-50', 'text-blue-700'));
+  const btn = document.getElementById('lvl' + lvl);
+  btn.classList.add('active', 'bg-blue-50', 'text-blue-700');
+  
+  const desc = document.getElementById('levelDesc');
+  if (lvl === 1) desc.textContent = "📊 Chỉ hiển thị tóm tắt vai trò và chức năng chính của từng nhân vật.";
+  if (lvl === 2) desc.textContent = "📊 Hiển thị logic chính, cảnh báo thực tế, và gợi ý cải thiện.";
+  if (lvl === 3) desc.textContent = "📊 Hiển thị chi tiết từng bước thực hiện của tất cả các kịch bản.";
+  
+  renderResults();
+}
+
+function applyFocus() {
+  currentFocus = document.getElementById('spriteFocus').value;
+  renderResults();
+}
+
+function showDebugOnly() {
+  debugOnlyMode = true;
+  showDebugPanel = true;
+  renderResults();
+}
+
+function showRecsOnly() {
+  // Simple filter logic via render
+  renderResults(true); 
+}
+
+function adjustLevel(dir) {
+  if (dir === 'more' && currentLevel < 3) switchLevel(currentLevel + 1);
+  if (dir === 'less' && currentLevel > 1) switchLevel(currentLevel - 1);
+}
+
+function renderResults(recsOnly = false) {
+  if (!globalAnalysisData) return;
+  const container = document.getElementById('resultsContent');
+  container.innerHTML = '';
+
+  const data = globalAnalysisData;
+
+  // 1. Overview Header
+  const header = document.createElement('div');
+  header.className = 'bg-white rounded-xl border p-5 shadow-sm';
+  header.innerHTML = `
+    <div class="flex justify-between items-start">
+      <div>
+        <h2 class="text-xl font-bold text-gray-800">Dự án: ${esc(data.projectName)}</h2>
+        <p class="text-gray-500 text-sm">Tổng cộng ${data.sprites.length} nhân vật và ${data.stage.scripts.length + data.sprites.reduce((a,s)=>a+s.scripts.length,0)} kịch bản.</p>
+      </div>
+      <div class="text-right no-print">
+        <span class="text-xs font-mono text-gray-400">v1.2 Stable</span>
+      </div>
+    </div>
+  `;
+  container.appendChild(header);
+
+  // 2. Debug/Warnings Panel
+  if (showDebugPanel && data.warnings.length > 0 && !recsOnly) {
+    const debugWrap = document.createElement('div');
+    debugWrap.className = 'bg-white rounded-xl border overflow-hidden shadow-sm';
+    debugWrap.innerHTML = `
+      <div class="bg-orange-50 px-4 py-2 border-b border-orange-100 flex justify-between items-center">
+        <h3 class="font-bold text-orange-800 text-sm flex items-center gap-2">⚠️ Phát hiện ${data.warnings.length} vấn đề cần lưu ý</h3>
+        <button onclick="togglePanel('debug')" class="text-xs text-orange-600 hover:underline cursor-pointer">Ẩn bảng</button>
+      </div>
+      <div class="p-2 space-y-1">
+        ${data.warnings.map(w => `
+          <div class="px-3 py-2 rounded-lg text-sm severity-${w.severity} flex gap-3">
+            <span>${w.severity === 'red' ? '❌' : '⚠️'}</span>
+            <div>
+              <span class="font-bold uppercase text-[10px] opacity-60">${w.category}</span>
+              <p class="text-gray-800">${esc(w.text)}</p>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    container.appendChild(debugWrap);
+  }
+
+  // 3. Recommendations
+  if (data.recommendations.length > 0) {
+    const recWrap = document.createElement('div');
+    recWrap.className = 'bg-white rounded-xl border overflow-hidden shadow-sm';
+    recWrap.innerHTML = `
+      <div class="bg-green-50 px-4 py-2 border-b border-green-100 flex justify-between items-center">
+        <h3 class="font-bold text-green-800 text-sm flex items-center gap-2">💡 Gợi ý cải thiện</h3>
+      </div>
+      <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+        ${data.recommendations.map(r => `
+          <div class="flex gap-3 items-start p-3 bg-gray-50 rounded-lg border border-gray-100">
+            <span class="text-xl">✨</span>
+            <p class="text-sm text-gray-700">${esc(r.text)}</p>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    container.appendChild(recWrap);
+    if (recsOnly) return; 
+  }
+
+  // 4. Sprites Analysis
+  const spritesToRender = [];
+  if (!currentFocus || currentFocus === '_stage_') spritesToRender.push({ isStage: true, ...data.stage });
+  data.sprites.forEach(s => {
+    if (!currentFocus || currentFocus === s.name) spritesToRender.push({ isStage: false, ...s });
+  });
+
+  spritesToRender.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-xl border shadow-sm overflow-hidden';
+    
+    // Role logic
+    const roleHtml = s.roles && showRolesPanel ? `
+      <div class="flex flex-wrap gap-1 mt-2">
+        ${s.roles.map(r => `<span class="role-badge role-${r.id}">${r.label}</span>`).join('')}
+      </div>
+    ` : '';
+
+    const behaviorHtml = s.behaviors && currentLevel >= 2 ? `
+      <div class="mt-3 flex flex-wrap items-center">
+        <span class="text-[10px] font-bold text-gray-400 uppercase mr-2">Hành vi:</span>
+        ${s.behaviors.map(b => `<span class="behavior-chip">${esc(b)}</span>`).join('')}
+      </div>
+    ` : '';
+
+    card.innerHTML = `
+      <div class="p-5 ${s.isStage ? 'bg-slate-50' : ''}">
+        <div class="flex justify-between items-start">
+          <div>
+            <h3 class="text-lg font-bold text-gray-800">${s.isStage ? '🖼️ Phông nền (Stage)' : '👾 Nhân vật: ' + esc(s.name)}</h3>
+            ${roleHtml}
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-gray-400 font-mono">${s.scripts.length} kịch bản | ${s.blockCount} khối</div>
+          </div>
+        </div>
+        
+        ${behaviorHtml}
+
+        <div class="mt-4 space-y-4">
+          ${s.scripts.map((sc, idx) => renderScript(sc, s.blocks, idx)).join('')}
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function renderScript(sc, blocks, index) {
+  const ev = getEventDescription(blocks[sc.id], blocks);
+  
+  // Level 1: Tiny summary
+  if (currentLevel === 1) {
+    return `
+      <div class="border rounded-lg p-3 bg-gray-50 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="event-badge ${ev.cls} mb-0">${ev.text}</span>
+          <span class="text-sm text-gray-600">${sc.summary}</span>
+        </div>
+        <span class="text-[10px] text-gray-400 font-mono">${sc.blockCount} khối</span>
+      </div>
+    `;
+  }
+
+  // Level 2 & 3: Detailed
+  const content = currentLevel === 3 
+    ? `<div class="mt-2 text-sm text-gray-700 bg-white p-3 rounded border border-gray-100 font-mono leading-relaxed">${followChain(blocks[sc.id].next, blocks, '', 0)}</div>`
+    : `<div class="mt-2 text-sm text-gray-600 pl-2 border-l-2 border-gray-100">${sc.summary}</div>`;
+
+  return `
+    <div class="group">
+      <div class="flex items-center gap-2">
+        <span class="event-badge ${ev.cls}">${ev.text}</span>
+        <span class="text-[10px] text-gray-300 font-mono opacity-0 group-hover:opacity-100 transition-opacity">#${index+1}</span>
+      </div>
+      ${content}
+    </div>
+  `;
+}
+
+function copyResults() {
+  const el = document.getElementById('resultsContent');
+  // Simple text extraction
+  const text = el.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('Đã copy kết quả!');
+  }).catch(() => {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('Đã copy kết quả!');
+  });
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.style.opacity = '1';
+  setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+}
+
+function togglePanel(panel) {
+  if (panel === 'roles') {
+    showRolesPanel = !showRolesPanel;
+    const btn = document.getElementById('btnToggleRoles');
+    if (showRolesPanel) {
+      btn.innerHTML = '👁️ Vai trò';
+      btn.className = 'px-3 py-1.5 rounded-lg text-sm font-medium border cursor-pointer bg-green-50 text-green-700 border-green-200 hover:bg-green-100';
+    } else {
+      btn.innerHTML = '🚫 Vai trò';
+      btn.className = 'px-3 py-1.5 rounded-lg text-sm font-medium border cursor-pointer bg-gray-100 text-gray-400 border-gray-200';
+    }
+  } else if (panel === 'debug') {
+    showDebugPanel = !showDebugPanel;
+    const btn = document.getElementById('btnToggleDebug');
+    if (showDebugPanel) {
+      btn.innerHTML = '👁️ Cảnh báo';
+      btn.className = 'px-3 py-1.5 rounded-lg text-sm font-medium border cursor-pointer bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100';
+    } else {
+      btn.innerHTML = '🚫 Cảnh báo';
+      btn.className = 'px-3 py-1.5 rounded-lg text-sm font-medium border cursor-pointer bg-gray-100 text-gray-400 border-gray-200';
+    }
+  }
+  renderResults();
+}
+
+</script>
+</body>
+</html>
