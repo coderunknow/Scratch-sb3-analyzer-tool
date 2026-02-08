@@ -1103,7 +1103,7 @@ function generateBehaviors(target, agg, scripts) {
     if (parts.length > 0) b.push(`Vòng lặp chính: ${parts.join(', ')}`);
   }
 
-  // Clone behavior
+    // Clone behavior
   if (agg.hasCloneStart) {
     const cp = [];
     if (agg.hasMotion) cp.push('di chuyển');
@@ -1243,7 +1243,7 @@ function generateWarnings(sprites, sent, received, varMods, gp) {
     const mods = varMods[varName];
     if (mods.length <= 1) continue;
     const sprites_list = [...new Set(mods.map(m => m.sprite))];
-    const isScoreVar = /score|điểm|point|level|life|mạng|health/i.test(varName);
+    const isScoreVar = /score|điểm|point|level|life|mạng|health|time/i.test(varName);
     if (sprites_list.length > 1 && isScoreVar) {
       warnings.push({
         severity: 'red',
@@ -1294,7 +1294,7 @@ function generateWarnings(sprites, sent, received, varMods, gp) {
   }
 
   // Large script check
-  for (const s of analysis.sprites) {
+  for (const s of sprites) {
     for (const sc of s.scripts) {
       if (sc.blockCount > 35) {
         warnings.push({ severity: 'yellow', category: 'logic', text: `Sprite "${s.name}" có một kịch bản quá dài (${sc.blockCount} khối). Nên tách nhỏ để dễ quản lý.` });
@@ -1307,7 +1307,7 @@ function generateWarnings(sprites, sent, received, varMods, gp) {
   }
 
   // Empty loops
-  for (const s of analysis.sprites) {
+  for (const s of sprites) {
     for (const sc of s.scripts) {
       if (sc.hasForeverLoop && sc.blockCount < 3) {
         warnings.push({ severity: 'yellow', category: 'logic', text: `Vòng lặp "mãi mãi" trong "${s.name}" có vẻ trống hoặc quá ít lệnh. Có thể gây treo trình duyệt.` });
@@ -1320,31 +1320,31 @@ function generateWarnings(sprites, sent, received, varMods, gp) {
 
 function generateRecommendations(analysis) {
   const recs = [];
-  const hasMultipleFlags = analysis.sprites.reduce((acc, s) => acc + s.scripts.filter(sc => sc.event === 'event_whenflagclicked').length, 0);
+  const hasMultipleFlags = sprites.reduce((acc, s) => acc + s.scripts.filter(sc => sc.event === 'event_whenflagclicked').length, 0);
 
   if (hasMultipleFlags > 8) {
     recs.push({ category: 'structure', text: "Dự án dùng rất nhiều khối 'Khi nhấn Cờ xanh'. Hãy thử dùng Broadcast để điều khiển thứ tự bắt đầu chính xác hơn." });
   }
 
-  const hasVariables = analysis.sprites.some(s => s.variables.length > 0) || analysis.stage.variables.length > 0;
+  const hasVariables = sprites.some(s => s.variables.length > 0) || analysis.stage.variables.length > 0;
   if (!hasVariables) {
     recs.push({ category: 'logic', text: "Dự án hiện chưa dùng Biến số. Hãy thử dùng biến để lưu điểm số hoặc trạng thái trò chơi." });
   }
 
-  const complexSprites = analysis.sprites.filter(s => s.blockCount > 100);
+  const complexSprites = sprites.filter(s => s.blockCount > 100);
   if (complexSprites.length > 0) {
     recs.push({ category: 'organization', text: "Một số nhân vật có rất nhiều code. Bạn có thể dùng 'Khối của tôi' (My Blocks) để gom các nhóm lệnh lại cho gọn." });
   }
 
   // Sound check
-  const hasSound = analysis.sprites.some(s => s.sounds.length > 0);
+  const hasSound = sprites.some(s => s.sounds.length > 0);
   if (!hasSound) {
     recs.push({ category: 'polish', text: "Thêm âm thanh hoặc nhạc nền sẽ làm dự án của bạn sinh động hơn rất nhiều!" });
   }
 
   // Comments check
   // Note: Scratch project.json stores comments separately, usually not analyzed here for simplicity
-  
+
   return recs;
 }
 
@@ -1354,7 +1354,7 @@ function generateRecommendations(analysis) {
 function populateSpriteFocus() {
   const sel = document.getElementById('spriteFocus');
   sel.innerHTML = '<option value="">📋 Tất cả nhân vật</option>';
-  
+
   // Stage first
   const optStage = document.createElement('option');
   optStage.value = '_stage_';
@@ -1374,12 +1374,12 @@ function switchLevel(lvl) {
   document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active', 'bg-blue-50', 'text-blue-700'));
   const btn = document.getElementById('lvl' + lvl);
   btn.classList.add('active', 'bg-blue-50', 'text-blue-700');
-  
+
   const desc = document.getElementById('levelDesc');
   if (lvl === 1) desc.textContent = "📊 Chỉ hiển thị tóm tắt vai trò và chức năng chính của từng nhân vật.";
   if (lvl === 2) desc.textContent = "📊 Hiển thị logic chính, cảnh báo thực tế, và gợi ý cải thiện.";
   if (lvl === 3) desc.textContent = "📊 Hiển thị chi tiết từng bước thực hiện của tất cả các kịch bản.";
-  
+
   renderResults();
 }
 
@@ -1482,7 +1482,7 @@ function renderResults(recsOnly = false) {
   spritesToRender.forEach(s => {
     const card = document.createElement('div');
     card.className = 'bg-white rounded-xl border shadow-sm overflow-hidden';
-    
+
     // Role logic
     const roleHtml = s.roles && showRolesPanel ? `
       <div class="flex flex-wrap gap-1 mt-2">
@@ -1522,7 +1522,7 @@ function renderResults(recsOnly = false) {
 
 function renderScript(sc, blocks, index) {
   const ev = getEventDescription(blocks[sc.id], blocks);
-  
+
   // Level 1: Tiny summary
   if (currentLevel === 1) {
     return `
