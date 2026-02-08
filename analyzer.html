@@ -1103,7 +1103,7 @@ function generateBehaviors(target, agg, scripts) {
     if (parts.length > 0) b.push(`Vòng lặp chính: ${parts.join(', ')}`);
   }
 
-    // Clone behavior
+      // Clone behavior
   if (agg.hasCloneStart) {
     const cp = [];
     if (agg.hasMotion) cp.push('di chuyển');
@@ -1309,7 +1309,7 @@ function generateWarnings(sprites, sent, received, varMods, gp) {
   // Empty loops
   for (const s of sprites) {
     for (const sc of s.scripts) {
-      if (sc.hasForeverLoop && sc.blockCount < 3) {
+      if (sc.chainPatterns.hasForeverLoop && sc.blockCount < 3) {
         warnings.push({ severity: 'yellow', category: 'logic', text: `Vòng lặp "mãi mãi" trong "${s.name}" có vẻ trống hoặc quá ít lệnh. Có thể gây treo trình duyệt.` });
       }
     }
@@ -1320,6 +1320,7 @@ function generateWarnings(sprites, sent, received, varMods, gp) {
 
 function generateRecommendations(analysis) {
   const recs = [];
+  const sprites = analysis.sprites;
   const hasMultipleFlags = sprites.reduce((acc, s) => acc + s.scripts.filter(sc => sc.event === 'event_whenflagclicked').length, 0);
 
   if (hasMultipleFlags > 8) {
