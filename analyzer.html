@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<<<<<<< HEAD
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
@@ -682,337 +683,357 @@ function scanChainPatterns(startId, blocks) {
   }
 
   scan(startId, false);
-// Post-process: check forever loop wait
-if (p.hasForeverLoop && !p.hasWait && !p.hasSay && !p.hasGlide && !p.hasSound) {
-p.foreverHasWait = false;
+
+  // Post-process: check forever loop wait
+  if (p.hasForeverLoop && !p.hasWait && !p.hasSay && !p.hasGlide && !p.hasSound) {
+    p.foreverHasWait = false;
+  }
+
+  return p;
 }
-return p;
-}
+
 function scanReporter(blockId, blocks, patterns) {
-const b = blocks[blockId];
-if (!b) return;
-if (b.opcode === 'sensing_keypressed') {
-patterns.hasKeyChecks = true;
-const keyInp = b.inputs && b.inputs['KEY_OPTION'];
-if (keyInp && keyInp[1] && typeof keyInp[1] === 'string' && blocks[keyInp[1]]) {
-const kb = blocks[keyInp[1]];
-if (kb && kb.fields && kb.fields['KEY_OPTION']) patterns.keyNames.add(kb.fields['KEY_OPTION'][0]);
+  const b = blocks[blockId];
+  if (!b) return;
+  if (b.opcode === 'sensing_keypressed') {
+    patterns.hasKeyChecks = true;
+    const keyInp = b.inputs && b.inputs['KEY_OPTION'];
+    if (keyInp && keyInp[1] && typeof keyInp[1] === 'string' && blocks[keyInp[1]]) {
+      const kb = blocks[keyInp[1]];
+      if (kb && kb.fields && kb.fields['KEY_OPTION']) patterns.keyNames.add(kb.fields['KEY_OPTION'][0]);
+    }
+  }
+  if (b.opcode === 'sensing_touchingobject') {
+    patterns.hasCollision = true;
+    const ti = b.inputs && b.inputs['TOUCHINGOBJECTMENU'];
+    if (ti && ti[1] && typeof ti[1] === 'string' && blocks[ti[1]]) {
+      const tb = blocks[ti[1]];
+      if (tb && tb.fields && tb.fields['TOUCHINGOBJECTMENU']) patterns.collisionTargets.add(tb.fields['TOUCHINGOBJECTMENU'][0]);
+    }
+  }
+  if (b.opcode === 'sensing_answer') patterns.hasAnswer = true;
+  if (b.opcode === 'operator_random') patterns.hasRandom = true;
+  if (b.opcode === 'sensing_mousedown' || b.opcode === 'sensing_mousex' || b.opcode === 'sensing_mousey') patterns.hasKeyChecks = true;
+  // Recurse
+  if (b.inputs) {
+    for (const k in b.inputs) {
+      const inp = b.inputs[k];
+      if (inp && typeof inp[1] === 'string' && blocks[inp[1]]) scanReporter(inp[1], blocks, patterns);
+    }
+  }
 }
-}
-if (b.opcode === 'sensing_touchingobject') {
-patterns.hasCollision = true;
-const ti = b.inputs && b.inputs['TOUCHINGOBJECTMENU'];
-if (ti && ti[1] && typeof ti[1] === 'string' && blocks[ti[1]]) {
-const tb = blocks[ti[1]];
-if (tb && tb.fields && tb.fields['TOUCHINGOBJECTMENU']) patterns.collisionTargets.add(tb.fields['TOUCHINGOBJECTMENU'][0]);
-}
-}
-if (b.opcode === 'sensing_answer') patterns.hasAnswer = true;
-if (b.opcode === 'operator_random') patterns.hasRandom = true;
-if (b.opcode === 'sensing_mousedown' || b.opcode === 'sensing_mousex' || b.opcode === 'sensing_mousey') patterns.hasKeyChecks = true;
-// Recurse
-if (b.inputs) {
-for (const k in b.inputs) {
-const inp = b.inputs[k];
-if (inp && typeof inp[1] === 'string' && blocks[inp[1]]) scanReporter(inp[1], blocks, patterns);
-}
-}
-}
+
 function extractBroadcastName(block, blocks) {
-const inp = block.inputs && block.inputs['BROADCAST_INPUT'];
-if (!inp) return null;
-if (inp[0] === 1 && Array.isArray(inp[1])) return inp[1][1];
-if (inp[0] === 3) {
-if (inp[1] && typeof inp[1] === 'string' && blocks[inp[1]]) return null;
-if (inp[2] && Array.isArray(inp[2])) return inp[2][1];
+  const inp = block.inputs && block.inputs['BROADCAST_INPUT'];
+  if (!inp) return null;
+  if (inp[0] === 1 && Array.isArray(inp[1])) return inp[1][1];
+  if (inp[0] === 3) {
+    if (inp[1] && typeof inp[1] === 'string' && blocks[inp[1]]) return null;
+    if (inp[2] && Array.isArray(inp[2])) return inp[2][1];
+  }
+  return null;
 }
-return null;
-}
+
 // ========================================================================
 // ROLE DETECTION
 // ========================================================================
 function detectSpriteRole(name, isStage, agg) {
-if (isStage) {
-const reasons = ['Stage luôn đóng vai trò quản lý nền'];
-if (agg.broadcastsSent.size > 2) reasons.push('Gửi ' + agg.broadcastsSent.size + ' broadcast → điều phối nhiều sprite');
-if (agg.hasBackdropChange) reasons.push('Quản lý chuyển phông nền');
-if (agg.allVarsSet.size > 0) reasons.push('Khởi tạo biến toàn cục');
-const conf = (agg.broadcastsSent.size > 2 || agg.hasBackdropChange) ? 90 : 75;
-const desc = (agg.broadcastsSent.size > 2 || agg.hasBackdropChange) ? 'Điều phối game / Quản lý cảnh' : 'Nền và quản lý chung';
-return { role: 'controller', desc, cls: 'role-controller', confidence: conf, reasons };
-}
-const hasKeys = agg.hasKeyControls;
-const isCloned = agg.hasCloneStart;
-const doesClone = agg.hasCloning;
-const hasCollision = agg.hasCollision;
-const hasMotion = agg.hasMotion;
-const modifiesScore = [...agg.allVarsChanged].some(v => /score|điểm|point/i.test(v));
-const modifiesLife = [...agg.allVarsChanged].some(v => /life|mạng|health|hp/i.test(v));
-const nameSuggestsBullet = /bullet|đạn|projectile|shot|arrow|laser|beam|fire|bắn|tên/i.test(name);
-const nameSuggestsEnemy = /enemy|địch|monster|quái|obstacle|chướng|boss|zombie|alien|spider|bat/i.test(name);
-const nameSuggestsItem = /coin|xu|item|vật phẩm|star|sao|gem|heart|tim|collect|power|apple|fruit/i.test(name);
-// ===== PLAYER =====
-if (hasKeys && hasMotion && !isCloned) {
-const reasons = ['Điều khiển bằng phím bấm', 'Có block di chuyển', 'Không phải bản sao (clone)'];
-let conf = 85;
-if (agg.hasForeverLoop) { conf += 5; reasons.push('Có vòng lặp chính kiểm tra phím'); }
-if (hasCollision) { conf += 3; reasons.push('Kiểm tra va chạm với đối tượng khác'); }
-return { role: 'player', desc: 'Nhân vật chính (điều khiển bằng phím)', cls: 'role-player', confidence: Math.min(conf, 95), reasons };
-}
-// ===== CLONED SPRITES: Scoring-based classification =====
-if (isCloned) {
-let bulletScore = 0, enemyScore = 0, collectScore = 0, entityScore = 0;
-const bulletR = [], enemyR = [], collectR = [], entityR = [];
-// Motion
-if (hasMotion) { bulletScore += 2; enemyScore += 2; entityScore += 2; }
+  if (isStage) {
+    const reasons = ['Stage luôn đóng vai trò quản lý nền'];
+    if (agg.broadcastsSent.size > 2) reasons.push('Gửi ' + agg.broadcastsSent.size + ' broadcast → điều phối nhiều sprite');
+    if (agg.hasBackdropChange) reasons.push('Quản lý chuyển phông nền');
+    if (agg.allVarsSet.size > 0) reasons.push('Khởi tạo biến toàn cục');
+    const conf = (agg.broadcastsSent.size > 2 || agg.hasBackdropChange) ? 90 : 75;
+    const desc = (agg.broadcastsSent.size > 2 || agg.hasBackdropChange) ? 'Điều phối game / Quản lý cảnh' : 'Nền và quản lý chung';
+    return { role: 'controller', desc, cls: 'role-controller', confidence: conf, reasons };
+  }
 
-// Self-deletion pattern
-if (agg.deletesClone) {
-  bulletScore += 3; bulletR.push('Tự xóa bản sao');
-  collectScore += 2; collectR.push('Tự xóa sau tương tác');
-  enemyScore += 1;
+  const hasKeys = agg.hasKeyControls;
+  const isCloned = agg.hasCloneStart;
+  const doesClone = agg.hasCloning;
+  const hasCollision = agg.hasCollision;
+  const hasMotion = agg.hasMotion;
+  const modifiesScore = [...agg.allVarsChanged].some(v => /score|điểm|point/i.test(v));
+  const modifiesLife = [...agg.allVarsChanged].some(v => /life|mạng|health|hp/i.test(v));
+  const nameSuggestsBullet = /bullet|đạn|projectile|shot|arrow|laser|beam|fire|bắn|tên/i.test(name);
+  const nameSuggestsEnemy = /enemy|địch|monster|quái|obstacle|chướng|boss|zombie|alien|spider|bat/i.test(name);
+  const nameSuggestsItem = /coin|xu|item|vật phẩm|star|sao|gem|heart|tim|collect|power|apple|fruit/i.test(name);
+
+  // ===== PLAYER =====
+  if (hasKeys && hasMotion && !isCloned) {
+    const reasons = ['Điều khiển bằng phím bấm', 'Có block di chuyển', 'Không phải bản sao (clone)'];
+    let conf = 85;
+    if (agg.hasForeverLoop) { conf += 5; reasons.push('Có vòng lặp chính kiểm tra phím'); }
+    if (hasCollision) { conf += 3; reasons.push('Kiểm tra va chạm với đối tượng khác'); }
+    return { role: 'player', desc: 'Nhân vật chính (điều khiển bằng phím)', cls: 'role-player', confidence: Math.min(conf, 95), reasons };
+  }
+
+  // ===== CLONED SPRITES: Scoring-based classification =====
+  if (isCloned) {
+    let bulletScore = 0, enemyScore = 0, collectScore = 0, entityScore = 0;
+    const bulletR = [], enemyR = [], collectR = [], entityR = [];
+
+    // Motion
+    if (hasMotion) { bulletScore += 2; enemyScore += 2; entityScore += 2; }
+
+    // Self-deletion pattern
+    if (agg.deletesClone) {
+      bulletScore += 3; bulletR.push('Tự xóa bản sao');
+      collectScore += 2; collectR.push('Tự xóa sau tương tác');
+      enemyScore += 1;
+    }
+
+    // Complexity
+    if (agg.blockCount < 35) {
+      bulletScore += 2; bulletR.push('Logic đơn giản (' + agg.blockCount + ' block)');
+    } else {
+      enemyScore += 2; enemyR.push('Logic phức tạp (' + agg.blockCount + ' block)');
+    }
+
+    // Forever loop = movement pattern = more like enemy
+    if (agg.hasForeverLoop) {
+      enemyScore += 3; enemyR.push('Có vòng lặp di chuyển/hành vi');
+      entityScore += 2;
+    } else {
+      bulletScore += 2; bulletR.push('Không có vòng lặp phức tạp');
+    }
+
+    // Collision behavior
+    if (hasCollision) {
+      enemyScore += 2; enemyR.push('Kiểm tra va chạm');
+      collectScore += 2; collectR.push('Kiểm tra va chạm');
+      const collidesEdge = [...agg.collisionTargets].some(t => /_edge_/i.test(t));
+      if (collidesEdge) { bulletScore += 2; bulletR.push('Kiểm tra va chạm cạnh màn hình'); }
+    } else {
+      bulletScore += 1;
+    }
+
+    // Variable modifications
+    if (modifiesScore && !modifiesLife) {
+      collectScore += 3; collectR.push('Thay đổi biến điểm số');
+      bulletScore += 1;
+    }
+    if (modifiesLife) {
+      enemyScore += 3; enemyR.push('Thay đổi biến mạng/health');
+    }
+
+    // Name-based hints (strong signals)
+    if (nameSuggestsBullet) { bulletScore += 4; bulletR.push('Tên "' + name + '" gợi ý đạn/vật thể bắn'); }
+    if (nameSuggestsEnemy) { enemyScore += 4; enemyR.push('Tên "' + name + '" gợi ý kẻ địch'); }
+    if (nameSuggestsItem) { collectScore += 4; collectR.push('Tên "' + name + '" gợi ý vật phẩm'); }
+
+    // Negative signals
+    if (hasKeys) { bulletScore -= 5; enemyScore -= 3; }
+
+    const candidates = [
+      { role: 'projectile', score: bulletScore, desc: 'Đạn / Vật thể bắn ra', cls: 'role-projectile', reasons: ['Được tạo từ clone', ...bulletR] },
+      { role: 'enemy', score: enemyScore, desc: 'Kẻ địch / Chướng ngại vật', cls: 'role-enemy', reasons: ['Được tạo từ clone', ...enemyR] },
+      { role: 'collectible', score: collectScore, desc: 'Vật phẩm thu thập', cls: 'role-collectible', reasons: ['Được tạo từ clone', ...collectR] },
+      { role: 'entity', score: entityScore, desc: 'Đối tượng clone', cls: 'role-entity', reasons: ['Được tạo từ clone', ...entityR] },
+    ];
+    candidates.sort((a, b) => b.score - a.score);
+    const best = candidates[0];
+    const second = candidates[1];
+    const gap = best.score - second.score;
+
+    let confidence;
+    if (gap >= 5) confidence = 85;
+    else if (gap >= 3) confidence = 70;
+    else if (gap >= 1) confidence = 55;
+    else confidence = 40;
+
+    if (gap <= 2 && second.score > 0) {
+      best.reasons.push('⚠️ Cũng có thể là: ' + second.desc + ' (chênh lệch điểm: ' + gap + ')');
+      if (confidence > 50) confidence = 50;
+    }
+    return { role: best.role, desc: best.desc, cls: best.cls, confidence: Math.min(confidence, 95), reasons: best.reasons };
+  }
+
+  // ===== NON-CLONED, NON-KEY-CONTROLLED =====
+  if (doesClone) {
+    const reasons = ['Tạo bản sao (clone) của sprite khác hoặc chính mình'];
+    let conf = 70;
+    if (agg.broadcastsSent.size > 0) { conf += 10; reasons.push('Gửi broadcast điều phối'); }
+    return { role: 'controller', desc: 'Nguồn tạo bản sao', cls: 'role-controller', confidence: Math.min(conf, 85), reasons };
+  }
+
+  if (agg.hasClickHandlers && (agg.hasSay || agg.broadcastsSent.size > 0) && !hasMotion) {
+    const reasons = ['Phản hồi click chuột', 'Không có di chuyển'];
+    if (agg.hasSay) reasons.push('Hiển thị text');
+    if (agg.broadcastsSent.size > 0) reasons.push('Gửi broadcast khi nhấp');
+    return { role: 'ui', desc: 'Nút bấm / Giao diện', cls: 'role-ui', confidence: 75, reasons };
+  }
+
+  if (hasMotion && hasCollision) {
+    return { role: 'entity', desc: 'Đối tượng tương tác', cls: 'role-entity', confidence: 60, reasons: ['Có di chuyển', 'Kiểm tra va chạm', 'Không điều khiển bằng phím, không phải clone'] };
+  }
+  if (hasKeys && !hasMotion) {
+    return { role: 'player', desc: 'Nhân vật (điều khiển bằng phím, không di chuyển trực tiếp)', cls: 'role-player', confidence: 55, reasons: ['Có điều khiển bằng phím', 'Không có block di chuyển trực tiếp — có thể dùng cách khác'] };
+  }
+  if (hasMotion) {
+    return { role: 'entity', desc: 'Đối tượng di chuyển', cls: 'role-entity', confidence: 55, reasons: ['Có di chuyển', 'Không rõ vai trò cụ thể'] };
+  }
+  if (agg.hasSay || agg.hasAsk) {
+    return { role: 'ui', desc: 'Hiển thị thông tin / Hội thoại', cls: 'role-ui', confidence: 60, reasons: ['Hiển thị text hoặc hỏi người dùng'] };
+  }
+  if (agg.hasPen) {
+    return { role: 'entity', desc: 'Vẽ bằng bút', cls: 'role-entity', confidence: 65, reasons: ['Sử dụng block bút vẽ'] };
+  }
+  return { role: 'decoration', desc: 'Trang trí / Phụ trợ', cls: 'role-decoration', confidence: 40, reasons: ['Không phát hiện logic tương tác đáng kể', 'Có thể là hình nền, trang trí, hoặc sprite chưa hoàn thiện'] };
 }
 
-// Complexity
-if (agg.blockCount < 35) {
-  bulletScore += 2; bulletR.push('Logic đơn giản (' + agg.blockCount + ' block)');
-} else {
-  enemyScore += 2; enemyR.push('Logic phức tạp (' + agg.blockCount + ' block)');
-}
-
-// Forever loop = movement pattern = more like enemy
-if (agg.hasForeverLoop) {
-  enemyScore += 3; enemyR.push('Có vòng lặp di chuyển/hành vi');
-  entityScore += 2;
-} else {
-  bulletScore += 2; bulletR.push('Không có vòng lặp phức tạp');
-}
-
-// Collision behavior
-if (hasCollision) {
-  enemyScore += 2; enemyR.push('Kiểm tra va chạm');
-  collectScore += 2; collectR.push('Kiểm tra va chạm');
-  const collidesEdge = [...agg.collisionTargets].some(t => /_edge_/i.test(t));
-  if (collidesEdge) { bulletScore += 2; bulletR.push('Kiểm tra va chạm cạnh màn hình'); }
-} else {
-  bulletScore += 1;
-}
-
-// Variable modifications
-if (modifiesScore && !modifiesLife) {
-  collectScore += 3; collectR.push('Thay đổi biến điểm số');
-  bulletScore += 1;
-}
-if (modifiesLife) {
-  enemyScore += 3; enemyR.push('Thay đổi biến mạng/health');
-}
-
-// Name-based hints (strong signals)
-if (nameSuggestsBullet) { bulletScore += 4; bulletR.push('Tên "' + name + '" gợi ý đạn/vật thể bắn'); }
-if (nameSuggestsEnemy) { enemyScore += 4; enemyR.push('Tên "' + name + '" gợi ý kẻ địch'); }
-if (nameSuggestsItem) { collectScore += 4; collectR.push('Tên "' + name + '" gợi ý vật phẩm'); }
-
-// Negative signals
-if (hasKeys) { bulletScore -= 5; enemyScore -= 3; }
-
-const candidates = [
-  { role: 'projectile', score: bulletScore, desc: 'Đạn / Vật thể bắn ra', cls: 'role-projectile', reasons: ['Được tạo từ clone', ...bulletR] },
-  { role: 'enemy', score: enemyScore, desc: 'Kẻ địch / Chướng ngại vật', cls: 'role-enemy', reasons: ['Được tạo từ clone', ...enemyR] },
-  { role: 'collectible', score: collectScore, desc: 'Vật phẩm thu thập', cls: 'role-collectible', reasons: ['Được tạo từ clone', ...collectR] },
-  { role: 'entity', score: entityScore, desc: 'Đối tượng clone', cls: 'role-entity', reasons: ['Được tạo từ clone', ...entityR] },
-];
-candidates.sort((a, b) => b.score - a.score);
-const best = candidates[0];
-const second = candidates[1];
-const gap = best.score - second.score;
-
-let confidence;
-if (gap >= 5) confidence = 85;
-else if (gap >= 3) confidence = 70;
-else if (gap >= 1) confidence = 55;
-else confidence = 40;
-
-if (gap <= 2 && second.score > 0) {
-  best.reasons.push('⚠️ Cũng có thể là: ' + second.desc + ' (chênh lệch điểm: ' + gap + ')');
-  if (confidence > 50) confidence = 50;
-}
-return { role: best.role, desc: best.desc, cls: best.cls, confidence: Math.min(confidence, 95), reasons: best.reasons };}
-// ===== NON-CLONED, NON-KEY-CONTROLLED =====
-if (doesClone) {
-const reasons = ['Tạo bản sao (clone) của sprite khác hoặc chính mình'];
-let conf = 70;
-if (agg.broadcastsSent.size > 0) { conf += 10; reasons.push('Gửi broadcast điều phối'); }
-return { role: 'controller', desc: 'Nguồn tạo bản sao', cls: 'role-controller', confidence: Math.min(conf, 85), reasons };
-}
-if (agg.hasClickHandlers && (agg.hasSay || agg.broadcastsSent.size > 0) && !hasMotion) {
-const reasons = ['Phản hồi click chuột', 'Không có di chuyển'];
-if (agg.hasSay) reasons.push('Hiển thị text');
-if (agg.broadcastsSent.size > 0) reasons.push('Gửi broadcast khi nhấp');
-return { role: 'ui', desc: 'Nút bấm / Giao diện', cls: 'role-ui', confidence: 75, reasons };
-}
-if (hasMotion && hasCollision) {
-return { role: 'entity', desc: 'Đối tượng tương tác', cls: 'role-entity', confidence: 60, reasons: ['Có di chuyển', 'Kiểm tra va chạm', 'Không điều khiển bằng phím, không phải clone'] };
-}
-if (hasKeys && !hasMotion) {
-return { role: 'player', desc: 'Nhân vật (điều khiển bằng phím, không di chuyển trực tiếp)', cls: 'role-player', confidence: 55, reasons: ['Có điều khiển bằng phím', 'Không có block di chuyển trực tiếp — có thể dùng cách khác'] };
-}
-if (hasMotion) {
-return { role: 'entity', desc: 'Đối tượng di chuyển', cls: 'role-entity', confidence: 55, reasons: ['Có di chuyển', 'Không rõ vai trò cụ thể'] };
-}
-if (agg.hasSay || agg.hasAsk) {
-return { role: 'ui', desc: 'Hiển thị thông tin / Hội thoại', cls: 'role-ui', confidence: 60, reasons: ['Hiển thị text hoặc hỏi người dùng'] };
-}
-if (agg.hasPen) {
-return { role: 'entity', desc: 'Vẽ bằng bút', cls: 'role-entity', confidence: 65, reasons: ['Sử dụng block bút vẽ'] };
-}
-return { role: 'decoration', desc: 'Trang trí / Phụ trợ', cls: 'role-decoration', confidence: 40, reasons: ['Không phát hiện logic tương tác đáng kể', 'Có thể là hình nền, trang trí, hoặc sprite chưa hoàn thiện'] };
-}
 function detectProjectType(gp) {
-if (gp.penBlocks > 5) return { genre: 'art', desc: '🎨 Dự án vẽ / Nghệ thuật' };
-if (gp.askBlocks > 3) return { genre: 'quiz', desc: '❓ Trò chơi hỏi đáp / Quiz' };
-if (gp.musicBlocks > 5) return { genre: 'music', desc: '🎵 Dự án âm nhạc' };
-if (gp.keyHandlers > 0 && gp.cloneBlocks > 0 && gp.collisionChecks > 0) {
-if (gp.gravityLike) return { genre: 'platformer', desc: '🏃 Game nhảy (Platformer)' };
-return { genre: 'arcade', desc: '🕹️ Game Arcade / Hành động' };
+  if (gp.penBlocks > 5) return { genre: 'art', desc: '🎨 Dự án vẽ / Nghệ thuật' };
+  if (gp.askBlocks > 3) return { genre: 'quiz', desc: '❓ Trò chơi hỏi đáp / Quiz' };
+  if (gp.musicBlocks > 5) return { genre: 'music', desc: '🎵 Dự án âm nhạc' };
+  if (gp.keyHandlers > 0 && gp.cloneBlocks > 0 && gp.collisionChecks > 0) {
+    if (gp.gravityLike) return { genre: 'platformer', desc: '🏃 Game nhảy (Platformer)' };
+    return { genre: 'arcade', desc: '🕹️ Game Arcade / Hành động' };
+  }
+  if (gp.keyHandlers > 0 && gp.collisionChecks > 0) return { genre: 'game', desc: '🎮 Trò chơi tương tác' };
+  if (gp.keyHandlers > 0 && gp.motionBlocks > 5) return { genre: 'game', desc: '🎮 Trò chơi điều khiển' };
+  if (gp.backdropSwitches > 2 && gp.broadcastCount > 3) return { genre: 'story', desc: '📖 Câu chuyện / Hoạt hình' };
+  if (gp.backdropSwitches > 0 && gp.sayBlocks > 3) return { genre: 'story', desc: '📖 Câu chuyện / Trình chiếu' };
+  if (gp.clickHandlers > 3) return { genre: 'clicker', desc: '🖱️ Game nhấp chuột' };
+  if (gp.cloneBlocks > 0 && gp.collisionChecks > 0) return { genre: 'arcade', desc: '🕹️ Game Arcade' };
+  if (gp.blockCount > 100 && gp.varCount > 5) return { genre: 'simulation', desc: '⚙️ Mô phỏng / Dự án phức tạp' };
+  if (gp.blockCount < 20) return { genre: 'simple', desc: '✨ Dự án đơn giản / Thử nghiệm' };
+  return { genre: 'general', desc: '📦 Dự án Scratch đa dụng' };
 }
-if (gp.keyHandlers > 0 && gp.collisionChecks > 0) return { genre: 'game', desc: '🎮 Trò chơi tương tác' };
-if (gp.keyHandlers > 0 && gp.motionBlocks > 5) return { genre: 'game', desc: '🎮 Trò chơi điều khiển' };
-if (gp.backdropSwitches > 2 && gp.broadcastCount > 3) return { genre: 'story', desc: '📖 Câu chuyện / Hoạt hình' };
-if (gp.backdropSwitches > 0 && gp.sayBlocks > 3) return { genre: 'story', desc: '📖 Câu chuyện / Trình chiếu' };
-if (gp.clickHandlers > 3) return { genre: 'clicker', desc: '🖱️ Game nhấp chuột' };
-if (gp.cloneBlocks > 0 && gp.collisionChecks > 0) return { genre: 'arcade', desc: '🕹️ Game Arcade' };
-if (gp.blockCount > 100 && gp.varCount > 5) return { genre: 'simulation', desc: '⚙️ Mô phỏng / Dự án phức tạp' };
-if (gp.blockCount < 20) return { genre: 'simple', desc: '✨ Dự án đơn giản / Thử nghiệm' };
-return { genre: 'general', desc: '📦 Dự án Scratch đa dụng' };
-}
+
 // ========================================================================
 // ANALYSIS ENGINE — Returns structured data, no rendering
 // ========================================================================
 function analyzeProject(project, fileName) {
-const targets = project.targets || [];
-if (!targets.length) { showError('Project không có targets.'); return null; }
-targets.sort((a, b) => a.isStage === b.isStage ? 0 : a.isStage ? -1 : 1);
-// Global pattern counters
-const gp = {
-blockCount: 0, varCount: 0, listCount: 0,
-keyHandlers: 0, clickHandlers: 0, cloneBlocks: 0,
-collisionChecks: 0, motionBlocks: 0, sayBlocks: 0,
-askBlocks: 0, penBlocks: 0, musicBlocks: 0,
-backdropSwitches: 0, broadcastCount: 0,
-gravityLike: false, costumeCount: 0, soundCount: 0,
-};
-const allVars = [];
-const allLists = [];
-const allBroadcastsSent = new Set();
-const allBroadcastsReceived = new Set();
-const varModifiers = {}; // varName -> [{sprite, event}]
-const spritesData = [];
-for (const target of targets) {
-const blocks = target.blocks || {};
-let tBlockCount = 0;
-for (const id in blocks) { const b = blocks[id]; if (b && typeof b === 'object' && !Array.isArray(b) && b.opcode) tBlockCount++; }
-gp.blockCount += tBlockCount;
-gp.costumeCount += (target.costumes || []).length;
-gp.soundCount += (target.sounds || []).length;const vars = target.variables || {};
-for (const vid in vars) { gp.varCount++; allVars.push({ name: vars[vid][0], value: vars[vid][1], scope: target.isStage ? 'toàn cục' : `sprite "${target.name}"`, targetName: target.name }); }
-const lists = target.lists || {};
-for (const lid in lists) { gp.listCount++; allLists.push({ name: lists[lid][0], items: lists[lid][1], scope: target.isStage ? 'toàn cục' : `sprite "${target.name}"`, targetName: target.name }); }
+  const targets = project.targets || [];
+  if (!targets.length) { showError('Project không có targets.'); return null; }
+  targets.sort((a, b) => a.isStage === b.isStage ? 0 : a.isStage ? -1 : 1);
 
-// Scan blocks for global patterns
-for (const id in blocks) {
-  const b = blocks[id];
-  if (!b || !b.opcode) continue;
-  const op = b.opcode;
-  if (op.startsWith('motion_')) gp.motionBlocks++;
-  if (op === 'control_create_clone_of') gp.cloneBlocks++;
-  if (op === 'looks_say' || op === 'looks_sayforsecs') gp.sayBlocks++;
-  if (op === 'sensing_askandwait') gp.askBlocks++;
-  if (op.startsWith('pen_')) gp.penBlocks++;
-  if (op.startsWith('music_')) gp.musicBlocks++;
-  if (op === 'looks_switchbackdropto' || op === 'looks_nextbackdrop') gp.backdropSwitches++;
-  if (op === 'event_whenkeypressed') gp.keyHandlers++;
-  if (op === 'event_whenthisspriteclicked' || op === 'event_whenstageclicked') gp.clickHandlers++;
-  // Detect gravity-like pattern: changeyby with negative in forever
-  if (op === 'motion_changeyby') {
-    const yInput = b.inputs && b.inputs['DY'];
-    if (yInput && Array.isArray(yInput[1]) && Number(yInput[1][1]) < 0) gp.gravityLike = true;
-  }
-}
+  // Global pattern counters
+  const gp = {
+    blockCount: 0, varCount: 0, listCount: 0,
+    keyHandlers: 0, clickHandlers: 0, cloneBlocks: 0,
+    collisionChecks: 0, motionBlocks: 0, sayBlocks: 0,
+    askBlocks: 0, penBlocks: 0, musicBlocks: 0,
+    backdropSwitches: 0, broadcastCount: 0,
+    gravityLike: false, costumeCount: 0, soundCount: 0,
+  };
 
-// Find hat blocks
-const hats = findHatBlocks(blocks);
-const spriteAgg = {
-  hasMotion: false, hasKeyControls: false, hasClickHandlers: false,
-  hasCollision: false, hasCloning: false, hasCloneStart: false,
-  deletesClone: false, hasForeverLoop: false,
-  hasSay: false, hasAsk: false, hasPen: false, hasSound: false,
-  hasBackdropChange: false, hasCostumeChange: false,
-  broadcastsSent: new Set(), broadcastsReceived: new Set(),
-  allVarsSet: new Set(), allVarsChanged: new Set(),
-  collisionTargets: new Set(), keyNames: new Set(),
-  blockCount: tBlockCount,
-};
+  const allVars = [];
+  const allLists = [];
+  const allBroadcastsSent = new Set();
+  const allBroadcastsReceived = new Set();
+  const varModifiers = {}; // varName -> [{sprite, event}]
+  const spritesData = [];
 
-const scriptsData = [];
-for (const hatId of hats) {
-  const hat = blocks[hatId];
-  if (!hat) continue;
-  const evDesc = getEventDescription(hat, blocks);
-  const chainP = scanChainPatterns(hatId, blocks);
+  for (const target of targets) {
+    const blocks = target.blocks || {};
+    let tBlockCount = 0;
+    for (const id in blocks) { const b = blocks[id]; if (b && typeof b === 'object' && !Array.isArray(b) && b.opcode) tBlockCount++; }
+    gp.blockCount += tBlockCount;
+    gp.costumeCount += (target.costumes || []).length;
+    gp.soundCount += (target.sounds || []).length;
 
-  // Merge chain patterns into sprite aggregate
-  if (chainP.hasMotion) spriteAgg.hasMotion = true;
-  if (chainP.hasKeyChecks) { spriteAgg.hasKeyControls = true; chainP.keyNames.forEach(k => spriteAgg.keyNames.add(k)); }
-  if (chainP.hasCollision) { spriteAgg.hasCollision = true; chainP.collisionTargets.forEach(t => spriteAgg.collisionTargets.add(t)); }
-  if (chainP.hasCloning) spriteAgg.hasCloning = true;
-  if (hat.opcode === 'control_start_as_clone') spriteAgg.hasCloneStart = true;
-  if (chainP.deletesClone) spriteAgg.deletesClone = true;
-  if (chainP.hasForeverLoop) spriteAgg.hasForeverLoop = true;
-  if (chainP.hasSay || chainP.hasThink) spriteAgg.hasSay = true;
-  if (chainP.hasAsk) spriteAgg.hasAsk = true;
-  if (chainP.hasPen) spriteAgg.hasPen = true;
-  if (chainP.hasSound) spriteAgg.hasSound = true;
-  if (chainP.hasBackdropChange) spriteAgg.hasBackdropChange = true;
-  if (chainP.hasCostumeChange) spriteAgg.hasCostumeChange = true;
-  if (hat.opcode === 'event_whenthisspriteclicked' || hat.opcode === 'event_whenstageclicked') spriteAgg.hasClickHandlers = true;
-  chainP.varsSet.forEach(v => spriteAgg.allVarsSet.add(v));
-  chainP.varsChanged.forEach(v => spriteAgg.allVarsChanged.add(v));
-  chainP.broadcastsSent.forEach(m => { spriteAgg.broadcastsSent.add(m); allBroadcastsSent.add(m); });
-  if (hat.opcode === 'event_whenbroadcastreceived') {
-    const bn = resolveField('BROADCAST_OPTION', hat);
-    if (bn !== '???') { spriteAgg.broadcastsReceived.add(bn); allBroadcastsReceived.add(bn); }
-  }
+    const vars = target.variables || {};
+    for (const vid in vars) { gp.varCount++; allVars.push({ name: vars[vid][0], value: vars[vid][1], scope: target.isStage ? 'toàn cục' : `sprite "${target.name}"`, targetName: target.name }); }
+    const lists = target.lists || {};
+    for (const lid in lists) { gp.listCount++; allLists.push({ name: lists[lid][0], items: lists[lid][1], scope: target.isStage ? 'toàn cục' : `sprite "${target.name}"`, targetName: target.name }); }
 
-  // Track var modifications for conflict detection
-  chainP.varsSet.forEach(v => { if (!varModifiers[v]) varModifiers[v] = []; varModifiers[v].push({ sprite: target.name, event: evDesc.text }); });
-  chainP.varsChanged.forEach(v => { if (!varModifiers[v]) varModifiers[v] = []; varModifiers[v].push({ sprite: target.name, event: evDesc.text }); });
+    // Scan blocks for global patterns
+    for (const id in blocks) {
+      const b = blocks[id];
+      if (!b || !b.opcode) continue;
+      const op = b.opcode;
+      if (op.startsWith('motion_')) gp.motionBlocks++;
+      if (op === 'control_create_clone_of') gp.cloneBlocks++;
+      if (op === 'looks_say' || op === 'looks_sayforsecs') gp.sayBlocks++;
+      if (op === 'sensing_askandwait') gp.askBlocks++;
+      if (op.startsWith('pen_')) gp.penBlocks++;
+      if (op.startsWith('music_')) gp.musicBlocks++;
+      if (op === 'looks_switchbackdropto' || op === 'looks_nextbackdrop') gp.backdropSwitches++;
+      if (op === 'event_whenkeypressed') gp.keyHandlers++;
+      if (op === 'event_whenthisspriteclicked' || op === 'event_whenstageclicked') gp.clickHandlers++;
+      // Detect gravity-like pattern: changeyby with negative in forever
+      if (op === 'motion_changeyby') {
+        const yInput = b.inputs && b.inputs['DY'];
+        if (yInput && Array.isArray(yInput[1]) && Number(yInput[1][1]) < 0) gp.gravityLike = true;
+      }
+    }
 
-  // Pre-render detailed HTML
-  let detailedHtml = '';
-  if (hat.next) detailedHtml = followChain(hat.next, blocks, '', 0);
+    // Find hat blocks
+    const hats = findHatBlocks(blocks);
+    const spriteAgg = {
+      hasMotion: false, hasKeyControls: false, hasClickHandlers: false,
+      hasCollision: false, hasCloning: false, hasCloneStart: false,
+      deletesClone: false, hasForeverLoop: false,
+      hasSay: false, hasAsk: false, hasPen: false, hasSound: false,
+      hasBackdropChange: false, hasCostumeChange: false,
+      broadcastsSent: new Set(), broadcastsReceived: new Set(),
+      allVarsSet: new Set(), allVarsChanged: new Set(),
+      collisionTargets: new Set(), keyNames: new Set(),
+      blockCount: tBlockCount,
+    };
 
-  scriptsData.push({
-    hatId, eventDesc: evDesc,
-    chainPatterns: chainP,
-    detailedHtml,
-    blockCount: chainP.blockCount,
-  });
-}
+    const scriptsData = [];
+    for (const hatId of hats) {
+      const hat = blocks[hatId];
+      if (!hat) continue;
+      const evDesc = getEventDescription(hat, blocks);
+      const chainP = scanChainPatterns(hatId, blocks);
 
-gp.broadcastCount = allBroadcastsSent.size;
+      // Merge chain patterns into sprite aggregate
+      if (chainP.hasMotion) spriteAgg.hasMotion = true;
+      if (chainP.hasKeyChecks) { spriteAgg.hasKeyControls = true; chainP.keyNames.forEach(k => spriteAgg.keyNames.add(k)); }
+      if (chainP.hasCollision) { spriteAgg.hasCollision = true; chainP.collisionTargets.forEach(t => spriteAgg.collisionTargets.add(t)); }
+      if (chainP.hasCloning) spriteAgg.hasCloning = true;
+      if (hat.opcode === 'control_start_as_clone') spriteAgg.hasCloneStart = true;
+      if (chainP.deletesClone) spriteAgg.deletesClone = true;
+      if (chainP.hasForeverLoop) spriteAgg.hasForeverLoop = true;
+      if (chainP.hasSay || chainP.hasThink) spriteAgg.hasSay = true;
+      if (chainP.hasAsk) spriteAgg.hasAsk = true;
+      if (chainP.hasPen) spriteAgg.hasPen = true;
+      if (chainP.hasSound) spriteAgg.hasSound = true;
+      if (chainP.hasBackdropChange) spriteAgg.hasBackdropChange = true;
+      if (chainP.hasCostumeChange) spriteAgg.hasCostumeChange = true;
+      if (hat.opcode === 'event_whenthisspriteclicked' || hat.opcode === 'event_whenstageclicked') spriteAgg.hasClickHandlers = true;
+      chainP.varsSet.forEach(v => spriteAgg.allVarsSet.add(v));
+      chainP.varsChanged.forEach(v => spriteAgg.allVarsChanged.add(v));
+      chainP.broadcastsSent.forEach(m => { spriteAgg.broadcastsSent.add(m); allBroadcastsSent.add(m); });
+      if (hat.opcode === 'event_whenbroadcastreceived') {
+        const bn = resolveField('BROADCAST_OPTION', hat);
+        if (bn !== '???') { spriteAgg.broadcastsReceived.add(bn); allBroadcastsReceived.add(bn); }
+      }
 
-// Global collision checks
-if (spriteAgg.hasCollision) gp.collisionChecks++;
+      // Track var modifications for conflict detection
+      chainP.varsSet.forEach(v => { if (!varModifiers[v]) varModifiers[v] = []; varModifiers[v].push({ sprite: target.name, event: evDesc.text }); });
+      chainP.varsChanged.forEach(v => { if (!varModifiers[v]) varModifiers[v] = []; varModifiers[v].push({ sprite: target.name, event: evDesc.text }); });
 
-// Also detect key checks from sensing blocks
-if (spriteAgg.hasKeyControls) gp.keyHandlers = Math.max(gp.keyHandlers, 1);
+      // Pre-render detailed HTML
+      let detailedHtml = '';
+      if (hat.next) detailedHtml = followChain(hat.next, blocks, '', 0);
 
-const role = detectSpriteRole(target.name, target.isStage, spriteAgg);
+      scriptsData.push({
+        hatId, eventDesc: evDesc,
+        chainPatterns: chainP,
+        detailedHtml,
+        blockCount: chainP.blockCount,
+      });
+    }
 
-// Generate behavior summary
-const behaviors = generateBehaviors(target, spriteAgg, scriptsData);
+    gp.broadcastCount = allBroadcastsSent.size;
 
-// Count orphan blocks
+    // Global collision checks
+    if (spriteAgg.hasCollision) gp.collisionChecks++;
+
+    // Also detect key checks from sensing blocks
+    if (spriteAgg.hasKeyControls) gp.keyHandlers = Math.max(gp.keyHandlers, 1);
+
+    const role = detectSpriteRole(target.name, target.isStage, spriteAgg);
+
+    // Generate behavior summary
+    const behaviors = generateBehaviors(target, spriteAgg, scriptsData);
+
+    // Count orphan blocks
     let orphanCount = 0;
     for (const id in blocks) {
       const b = blocks[id];
@@ -1103,7 +1124,7 @@ function generateBehaviors(target, agg, scripts) {
     if (parts.length > 0) b.push(`Vòng lặp chính: ${parts.join(', ')}`);
   }
 
-      // Clone behavior
+  // Clone behavior
   if (agg.hasCloneStart) {
     const cp = [];
     if (agg.hasMotion) cp.push('di chuyển');
@@ -1243,7 +1264,7 @@ function generateWarnings(sprites, sent, received, varMods, gp) {
     const mods = varMods[varName];
     if (mods.length <= 1) continue;
     const sprites_list = [...new Set(mods.map(m => m.sprite))];
-    const isScoreVar = /score|điểm|point|level|life|mạng|health|time/i.test(varName);
+    const isScoreVar = /score|điểm|point|level|life|mạng|health/i.test(varName);
     if (sprites_list.length > 1 && isScoreVar) {
       warnings.push({
         severity: 'red',
@@ -1271,7 +1292,7 @@ function generateWarnings(sprites, sent, received, varMods, gp) {
     }
   }
 
-    // 🟡 Yellow: Should check
+  // 🟡 Yellow: Should check
   // Unmatched broadcasts
   const unmatchedSent = [...sent].filter(m => !received.has(m));
   const unmatchedReceived = [...received].filter(m => !sent.has(m));
@@ -1282,104 +1303,448 @@ function generateWarnings(sprites, sent, received, varMods, gp) {
         warnings.push({ severity: 'yellow', category: 'broadcast', text: `Broadcast "${msg}" được gửi nhưng không sprite nào nhận. Tin nhắn bị "lạc".` });
       }
     } else {
-      warnings.push({ severity: 'yellow', category: 'broadcast', text: `Có ${unmatchedSent.length} tin nhắn được gửi nhưng không có bên nhận.` });
+      warnings.push({ severity: 'yellow', category: 'broadcast', text: `${unmatchedSent.length} broadcast được gửi mà không ai nhận: ${unmatchedSent.slice(0, 3).join(', ')}...` });
     }
   }
 
+  // Variable conflicts (non-score variables)
+  for (const varName in varMods) {
+    const mods = varMods[varName];
+    const sprites_list = [...new Set(mods.map(m => m.sprite))];
+    const isScoreVar = /score|điểm|point|level|life|mạng|health/i.test(varName);
+    if (sprites_list.length > 1 && !isScoreVar) {
+      warnings.push({
+        severity: 'yellow',
+        category: 'variable-conflict',
+        text: `Biến "${varName}" được thay đổi bởi nhiều sprite (${sprites_list.join(', ')}). Có thể gây xung đột nếu chạy đồng thời.`,
+      });
+    }
+  }
+
+  // Clone without handler
+  for (const sp of sprites) {
+    if (sp.agg.hasCloning && !sp.agg.hasCloneStart) {
+      // Check if clone target is self
+      const clonesSelf = sp.scripts.some(sc => {
+        // This is a simplification — clone of "myself"
+        return sc.chainPatterns.hasCloning;
+      });
+      if (clonesSelf) {
+        const hasCloneHandler = sprites.some(s => s.name === sp.name && s.agg.hasCloneStart);
+        if (!hasCloneHandler) {
+          warnings.push({
+            severity: 'yellow',
+            category: 'clone',
+            text: `"${sp.name}" tạo bản sao nhưng không có block "Khi bản sao được tạo" để xử lý.`,
+          });
+        }
+      }
+    }
+  }
+
+  // 🟢 Green: Probably fine
   if (unmatchedReceived.length > 0) {
-    for (const msg of unmatchedReceived) {
-      // Ignore some standard ones if needed, but generally show
-      warnings.push({ severity: 'yellow', category: 'broadcast', text: `Sự kiện "${msg}" được chờ đợi nhưng không bao giờ được gửi.` });
+    if (unmatchedReceived.length <= 3) {
+      for (const msg of unmatchedReceived) {
+        warnings.push({ severity: 'green', category: 'broadcast', text: `Có block nhận broadcast "${msg}" nhưng không tìm thấy ai gửi. Có thể là code thừa hoặc broadcast động.` });
+      }
+    } else {
+      warnings.push({ severity: 'green', category: 'broadcast', text: `${unmatchedReceived.length} broadcast có người nhận nhưng không ai gửi.` });
     }
   }
 
-  // Large script check
-  for (const s of sprites) {
-    for (const sc of s.scripts) {
-      if (sc.blockCount > 35) {
-        warnings.push({ severity: 'yellow', category: 'logic', text: `Sprite "${s.name}" có một kịch bản quá dài (${sc.blockCount} khối). Nên tách nhỏ để dễ quản lý.` });
-      }
-    }
-    // High block count total
-    if (s.blockCount > 150) {
-      warnings.push({ severity: 'yellow', category: 'performance', text: `Sprite "${s.name}" quá phức tạp (${s.blockCount} khối). Có thể gây lag trên máy yếu.` });
-    }
-  }
-
-  // Empty loops
-  for (const s of sprites) {
-    for (const sc of s.scripts) {
-      if (sc.chainPatterns.hasForeverLoop && sc.blockCount < 3) {
-        warnings.push({ severity: 'yellow', category: 'logic', text: `Vòng lặp "mãi mãi" trong "${s.name}" có vẻ trống hoặc quá ít lệnh. Có thể gây treo trình duyệt.` });
-      }
+  // Large orphan count
+  for (const sp of sprites) {
+    if (sp.orphanCount > 10) {
+      warnings.push({ severity: 'green', category: 'orphan', text: `"${sp.name}" có ${sp.orphanCount} block rời không kết nối. Đây có thể là code thử nghiệm chưa xóa.` });
     }
   }
 
   return warnings;
 }
 
-function generateRecommendations(analysis) {
+// ========================================================================
+// RECOMMENDATIONS
+// ========================================================================
+function generateRecommendations(sprites, warnings, gp, projectType) {
   const recs = [];
-  const sprites = analysis.sprites;
-  const hasMultipleFlags = sprites.reduce((acc, s) => acc + s.scripts.filter(sc => sc.event === 'event_whenflagclicked').length, 0);
 
-  if (hasMultipleFlags > 8) {
-    recs.push({ category: 'structure', text: "Dự án dùng rất nhiều khối 'Khi nhấn Cờ xanh'. Hãy thử dùng Broadcast để điều khiển thứ tự bắt đầu chính xác hơn." });
+  // Performance
+  const perfWarnings = warnings.filter(w => w.category === 'performance');
+  if (perfWarnings.length > 0) {
+    recs.push('⚡ <strong>Thêm block "đợi"</strong> vào các vòng lặp vô hạn đang chạy không ngừng. Chỉ cần thêm "đợi 0 giây" cũng đủ để tránh lag.');
   }
 
-  const hasVariables = sprites.some(s => s.variables.length > 0) || analysis.stage.variables.length > 0;
-  if (!hasVariables) {
-    recs.push({ category: 'logic', text: "Dự án hiện chưa dùng Biến số. Hãy thử dùng biến để lưu điểm số hoặc trạng thái trò chơi." });
+  // Variable conflicts
+  const varConflicts = warnings.filter(w => w.category === 'variable-conflict');
+  if (varConflicts.length > 0) {
+    recs.push('🔀 <strong>Tập trung quản lý biến quan trọng</strong> (điểm, mạng) vào một sprite duy nhất, dùng broadcast để thông báo thay đổi.');
   }
 
-  const complexSprites = sprites.filter(s => s.blockCount > 100);
-  if (complexSprites.length > 0) {
-    recs.push({ category: 'organization', text: "Một số nhân vật có rất nhiều code. Bạn có thể dùng 'Khối của tôi' (My Blocks) để gom các nhóm lệnh lại cho gọn." });
+  // Clone management
+  const cloneWarnings = warnings.filter(w => w.category === 'clone');
+  if (cloneWarnings.length > 0) {
+    recs.push('🐑 <strong>Thêm block "Khi bản sao được tạo"</strong> để xử lý hành vi bản sao. Nếu không, bản sao sẽ chỉ là bản copy bất động.');
   }
 
-  // Sound check
-  const hasSound = sprites.some(s => s.sounds.length > 0);
-  if (!hasSound) {
-    recs.push({ category: 'polish', text: "Thêm âm thanh hoặc nhạc nền sẽ làm dự án của bạn sinh động hơn rất nhiều!" });
+  // Broadcast cleanup
+  const bcWarnings = warnings.filter(w => w.category === 'broadcast' && w.severity !== 'green');
+  if (bcWarnings.length > 0) {
+    recs.push('📨 <strong>Kiểm tra lại các broadcast</strong>: một số tin nhắn gửi đi không có ai nhận. Đặt tên broadcast rõ ràng để dễ theo dõi.');
   }
 
-  // Comments check
-  // Note: Scratch project.json stores comments separately, usually not analyzed here for simplicity
+  // General tips based on project type
+  if (gp.blockCount > 200 && gp.varCount > 8) {
+    recs.push('📦 <strong>Dự án khá phức tạp</strong>: cân nhắc dùng "Khối tùy chỉnh" (My Blocks) để gom logic lặp lại, giúp code dễ đọc hơn.');
+  }
 
-  return recs;
+  if (gp.cloneBlocks > 0) {
+    const noDelete = sprites.some(s => s.agg.hasCloneStart && !s.agg.deletesClone);
+    if (noDelete) {
+      recs.push('🗑️ <strong>Đảm bảo bản sao tự xóa</strong> khi không cần thiết (ra khỏi màn hình, bị tiêu diệt). Scratch giới hạn 300 bản sao — nếu không xóa sẽ tràn.');
+    }
+  }
+
+  if (recs.length === 0) {
+    recs.push('✅ Dự án có cấu trúc tốt! Tiếp tục phát triển và thử nghiệm thêm.');
+  }
+
+  return recs.slice(0, 5);
 }
 
 // ========================================================================
-// RENDERING
+// RENDER ENGINE — 3 levels
+// ========================================================================
+function renderResults() {
+  const data = globalAnalysisData;
+  if (!data) return;
+  const level = currentLevel;
+  const focus = currentFocus;
+
+  let html = '';
+
+  if (debugOnlyMode) {
+    html += renderDebugSection(data, level);
+    html += renderRecsSection(data);
+    document.getElementById('resultsContent').innerHTML = html;
+    return;
+  }
+
+  // TL;DR — always shown
+  html += renderTLDRSection(data);
+
+  // Overview cards — always shown
+  html += renderOverviewSection(data);
+
+  // Game flow — level 2+
+  if (level >= 2 && data.gameFlow.length > 0) {
+    html += renderGameFlowSection(data);
+  }
+
+  // Sprites
+  if (showRolesPanel) {
+    html += renderSpritesSection(data, level, focus);
+  }
+
+  // Variables — level 2+
+  if (level >= 2 && (data.variables.length > 0 || data.lists.length > 0)) {
+    html += renderVarsSection(data, focus);
+  }
+
+  // Debug — level 2+
+  if (level >= 2 && showDebugPanel) {
+    html += renderDebugSection(data, level);
+  }
+
+  // Detailed logic — level 3, per sprite
+  if (level >= 3) {
+    html += renderDetailedSection(data, focus);
+  }
+
+  // Recommendations — always shown
+  html += renderRecsSection(data);
+
+  document.getElementById('resultsContent').innerHTML = html;
+}
+
+function renderTLDRSection(data) {
+  let h = `<div class="bg-white rounded-xl border p-5 shadow-sm">`;
+  h += `<h3 class="text-lg font-bold mb-3 flex items-center gap-2">📌 Tóm tắt dự án (TL;DR) <span class="text-sm font-normal text-gray-400">${esc(data.fileName)}</span></h3>`;
+  h += `<div class="space-y-1 text-sm">`;
+  for (const line of data.tldr) {
+    h += `<div class="flex items-start gap-2"><span class="text-gray-400 mt-0.5">•</span><span>${line}</span></div>`;
+  }
+  h += `</div></div>`;
+  return h;
+}
+
+function renderOverviewSection(data) {
+  const o = data.overview;
+  let h = `<div class="bg-white rounded-xl border p-5 shadow-sm">`;
+  h += `<div class="grid grid-cols-3 md:grid-cols-6 gap-3">`;
+  h += `<div class="bg-blue-50 rounded-lg p-3 text-center"><div class="text-xl font-bold text-blue-600">${o.spriteCount}</div><div class="text-xs text-gray-500">Sprite</div></div>`;
+  h += `<div class="bg-purple-50 rounded-lg p-3 text-center"><div class="text-xl font-bold text-purple-600">${o.blockCount}</div><div class="text-xs text-gray-500">Block</div></div>`;
+  h += `<div class="bg-red-50 rounded-lg p-3 text-center"><div class="text-xl font-bold text-red-600">${o.varCount}</div><div class="text-xs text-gray-500">Biến</div></div>`;
+  h += `<div class="bg-amber-50 rounded-lg p-3 text-center"><div class="text-xl font-bold text-amber-600">${o.listCount}</div><div class="text-xs text-gray-500">Danh sách</div></div>`;
+  h += `<div class="bg-green-50 rounded-lg p-3 text-center"><div class="text-xl font-bold text-green-600">${o.costumeCount}</div><div class="text-xs text-gray-500">Trang phục</div></div>`;
+  h += `<div class="bg-pink-50 rounded-lg p-3 text-center"><div class="text-xl font-bold text-pink-600">${o.soundCount}</div><div class="text-xs text-gray-500">Âm thanh</div></div>`;
+  h += `</div></div>`;
+  return h;
+}
+
+function renderGameFlowSection(data) {
+  let h = `<div class="bg-white rounded-xl border p-5 shadow-sm">`;
+  h += `<h3 class="text-lg font-bold mb-3">🔄 Luồng hoạt động chính</h3>`;
+  h += `<div class="space-y-1 text-sm">`;
+  for (let i = 0; i < data.gameFlow.length; i++) {
+    h += `<div class="flex items-start gap-2"><span class="text-blue-400 font-mono text-xs mt-0.5">${i + 1}.</span><span>${esc(data.gameFlow[i])}</span></div>`;
+  }
+  h += `</div></div>`;
+  return h;
+}
+
+function renderSpritesSection(data, level, focus) {
+  let h = `<div class="bg-white rounded-xl border p-5 shadow-sm">`;
+  h += `<h3 class="text-lg font-bold mb-3">🐱 Nhân vật & Vai trò</h3>`;
+
+  const spritesToShow = focus ? data.sprites.filter(s => s.name === focus) : data.sprites;
+
+  if (focus) {
+    h += `<div class="mb-3 text-sm"><span class="focus-badge">🔍 Đang xem: "${esc(focus)}"</span> <button onclick="clearFocus()" class="text-blue-500 underline text-xs cursor-pointer">Xem tất cả</button></div>`;
+  }
+
+  for (const sp of spritesToShow) {
+    const icon = sp.isStage ? '🎭' : '🐱';
+    h += `<div class="mb-3 border rounded-lg p-3 bg-gray-50">`;
+    h += `<div class="flex items-center gap-2 mb-1">`;
+    h += `<span class="font-bold">${icon} ${esc(sp.name)}</span>`;
+    h += `<span class="role-badge ${sp.role.cls}">${esc(sp.role.desc)}</span>`;
+    const _conf = sp.role.confidence != null ? sp.role.confidence : '?';
+    const _confCls = _conf >= 80 ? 'confidence-high' : _conf >= 50 ? 'confidence-mid' : 'confidence-low';
+    const _confTitle = (sp.role.reasons || []).map(r => '• ' + r).join('\n');
+    h += `<span class="${_confCls} text-xs font-mono cursor-help" title="${esc(_confTitle)}">${_conf}%</span>`;
+    h += `<span class="text-xs text-gray-400">${sp.scriptCount} script · ${sp.blockCount} block</span>`;
+    h += `</div>`;
+
+    // Show role reasoning in Level 3
+    if (level >= 3 && sp.role.reasons && sp.role.reasons.length > 0) {
+      h += `<div class="text-xs text-gray-500 ml-6 mb-1">`;
+      h += `<span class="font-medium text-gray-600">Phân loại dựa trên:</span> `;
+      h += sp.role.reasons.map(r => esc(r)).join(' · ');
+      h += `</div>`;
+    }
+
+    // Behaviors (3-5 lines max)
+    h += `<div class="text-sm text-gray-700 mt-1 space-y-0.5">`;
+    for (const beh of sp.behaviors) {
+      h += `<div class="flex items-start gap-1.5"><span class="text-gray-400">→</span> ${esc(beh)}</div>`;
+    }
+    h += `</div>`;
+
+    // Level 2+: show script event badges
+    if (level >= 2 && sp.scripts.length > 0) {
+      h += `<div class="mt-2 flex flex-wrap gap-1">`;
+      for (const sc of sp.scripts) {
+        h += `<span class="event-badge ${sc.eventDesc.cls}" style="font-size:0.75em;padding:1px 6px;">${sc.eventDesc.text}</span>`;
+      }
+      h += `</div>`;
+    }
+
+    h += `</div>`;
+  }
+
+  h += `</div>`;
+  return h;
+}
+
+function renderVarsSection(data, focus) {
+  let h = `<div class="bg-white rounded-xl border p-5 shadow-sm">`;
+  h += `<h3 class="text-lg font-bold mb-3">📦 Biến & Danh sách</h3>`;
+
+  const varsToShow = focus ? data.variables.filter(v => v.targetName === focus || v.scope === 'toàn cục') : data.variables;
+  const listsToShow = focus ? data.lists.filter(l => l.targetName === focus || l.scope === 'toàn cục') : data.lists;
+
+  if (varsToShow.length > 0) {
+    h += `<div class="mb-2"><h4 class="font-semibold text-sm text-gray-600 mb-1">Biến:</h4><div class="grid gap-1">`;
+    for (const v of varsToShow) {
+      h += `<div class="text-sm bg-gray-50 rounded px-3 py-1">${varRef('«' + v.name + '»')} — <span class="text-blue-600">${esc(v.scope)}</span> — Giá trị: <strong>${esc(v.value)}</strong></div>`;
+    }
+    h += `</div></div>`;
+  }
+  if (listsToShow.length > 0) {
+    h += `<div><h4 class="font-semibold text-sm text-gray-600 mb-1">Danh sách:</h4><div class="grid gap-1">`;
+    for (const l of listsToShow) {
+      h += `<div class="text-sm bg-gray-50 rounded px-3 py-1">${varRef('«' + l.name + '»')} — <span class="text-blue-600">${esc(l.scope)}</span> — ${l.items.length} phần tử</div>`;
+    }
+    h += `</div></div>`;
+  }
+
+  h += `</div>`;
+  return h;
+}
+
+function renderDebugSection(data, level) {
+  const warnings = data.warnings;
+
+  // Filter by level
+  let filtered = warnings;
+  if (level <= 2) {
+    // Level 2: only red and yellow
+    filtered = warnings.filter(w => w.severity === 'red' || w.severity === 'yellow');
+  }
+
+  let h = `<div class="bg-white rounded-xl border p-5 shadow-sm" id="debugSection">`;
+  h += `<h3 class="text-lg font-bold mb-3">🐛 Phân tích Debug</h3>`;
+
+  if (filtered.length === 0) {
+    h += `<div class="text-green-600 text-sm p-3 bg-green-50 rounded-lg">✅ Không phát hiện vấn đề nghiêm trọng. Project có cấu trúc hợp lý.</div>`;
+  } else {
+    // Group by severity
+    const red = filtered.filter(w => w.severity === 'red');
+    const yellow = filtered.filter(w => w.severity === 'yellow');
+    const green = filtered.filter(w => w.severity === 'green');
+
+    if (red.length > 0) {
+      h += `<div class="mb-3"><div class="text-sm font-bold text-red-700 mb-1">🔴 Nguy hiểm — Có khả năng gây bug (${red.length})</div>`;
+      for (const w of red) {
+        h += `<div class="severity-red rounded-lg px-3 py-2 mb-1 text-sm">${esc(w.text)}</div>`;
+      }
+      h += `</div>`;
+    }
+
+    if (yellow.length > 0) {
+      h += `<div class="mb-3"><div class="text-sm font-bold text-amber-700 mb-1">🟡 Nên chú ý — Có thể gây lỗi trong vài trường hợp (${yellow.length})</div>`;
+      for (const w of yellow) {
+        h += `<div class="severity-yellow rounded-lg px-3 py-2 mb-1 text-sm">${esc(w.text)}</div>`;
+      }
+      h += `</div>`;
+    }
+
+    if (green.length > 0 && level >= 3) {
+      h += `<div class="mb-3"><div class="text-sm font-bold text-green-700 mb-1">🟢 Có thể bỏ qua — Không ảnh hưởng gameplay (${green.length})</div>`;
+      for (const w of green) {
+        h += `<div class="severity-green rounded-lg px-3 py-2 mb-1 text-sm">${esc(w.text)}</div>`;
+      }
+      h += `</div>`;
+    }
+  }
+
+  h += `</div>`;
+  return h;
+}
+
+function renderDetailedSection(data, focus) {
+  const spritesToShow = focus ? data.sprites.filter(s => s.name === focus) : data.sprites;
+
+  let h = `<div class="bg-white rounded-xl border p-5 shadow-sm">`;
+  h += `<h3 class="text-lg font-bold mb-2">🔬 Logic chi tiết — Developer Mode</h3>`;
+  h += `<p class="text-xs text-gray-500 mb-3">Hiển thị <strong>toàn bộ block</strong> theo thứ tự thực thi kèm <code class="opcode">[opcode]</code>. Biểu thức toán/điều kiện được đệ quy giải đầy đủ cây biểu thức. Mục tiêu: debug logic chỉ từ output, không cần mở Scratch.</p>`;
+
+  showOpcodes = true;
+
+  for (const sp of spritesToShow) {
+    if (sp.scripts.length === 0) continue;
+    const icon = sp.isStage ? '🎭' : '🐱';
+    const isRisky = data.warnings.some(w => w.severity === 'red' && w.text.includes(sp.name));
+
+    h += `<div class="mb-4 border rounded-lg overflow-hidden">`;
+    h += `<div class="dev-sprite-header px-4 py-2 font-bold flex items-center justify-between">`;
+    h += `<span>${icon} ${esc(sp.name)}</span>`;
+    h += `<span class="text-gray-400 text-xs">${sp.scripts.length} script · ${sp.blockCount} block${isRisky ? ' · ⚠️ có vấn đề' : ''}</span>`;
+    h += `</div>`;
+    h += `<div class="p-3 bg-gray-50">`;
+
+    for (let i = 0; i < sp.scripts.length; i++) {
+      const sc = sp.scripts[i];
+      h += `<div class="mb-4 dev-script-border pl-3 py-1">`;
+
+      // Event header with opcode
+      h += `<div class="mb-1 flex items-center gap-2 flex-wrap">`;
+      h += `<span class="event-badge ${sc.eventDesc.cls}">${sc.eventDesc.text}</span>`;
+      if (sp.targetBlocks && sp.targetBlocks[sc.hatId]) {
+        h += `<code class="opcode">[${esc(sp.targetBlocks[sc.hatId].opcode)}]</code>`;
+      }
+      h += `<span class="text-xs text-gray-400">${sc.blockCount} block</span>`;
+      h += `</div>`;
+
+      // Re-render blocks with opcodes using stored blocks reference
+      if (sp.targetBlocks && sp.targetBlocks[sc.hatId]) {
+        const hatBlock = sp.targetBlocks[sc.hatId];
+        if (hatBlock.next) {
+          const advHtml = followChain(hatBlock.next, sp.targetBlocks, '', 0);
+          h += `<div class="ml-1 text-sm">${advHtml}</div>`;
+        } else {
+          h += `<div class="ml-2 text-gray-400 italic text-sm">(Hat block không có hành động tiếp theo)</div>`;
+        }
+      } else if (sc.detailedHtml) {
+        // Fallback to pre-rendered (without opcodes)
+        h += `<div class="ml-2 text-sm">${sc.detailedHtml}</div>`;
+      } else {
+        h += `<div class="ml-2 text-gray-400 italic text-sm">(Không có hành động)</div>`;
+      }
+
+      h += `</div>`;
+    }
+
+    h += `</div></div>`;
+  }
+
+  showOpcodes = false;
+
+  h += `</div>`;
+  return h;
+}
+
+function renderRecsSection(data) {
+  let h = `<div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-5 shadow-sm" id="recsSection">`;
+  h += `<h3 class="text-lg font-bold mb-3 text-blue-800">💡 Những điều người làm game Scratch nên quan tâm nhất</h3>`;
+  h += `<div class="space-y-2">`;
+  for (const rec of data.recommendations) {
+    h += `<div class="flex items-start gap-2 text-sm"><span class="mt-0.5">•</span><span>${rec}</span></div>`;
+  }
+  h += `</div></div>`;
+  return h;
+}
+
+// ========================================================================
+// UI CONTROLS
 // ========================================================================
 function populateSpriteFocus() {
-  const sel = document.getElementById('spriteFocus');
-  sel.innerHTML = '<option value="">📋 Tất cả nhân vật</option>';
-
-  // Stage first
-  const optStage = document.createElement('option');
-  optStage.value = '_stage_';
-  optStage.textContent = '🖼️ Phông nền (Stage)';
-  sel.appendChild(optStage);
-
-  globalAnalysisData.sprites.forEach(s => {
-    const opt = document.createElement('option');
-    opt.value = s.name;
-    opt.textContent = `👾 ${s.name}`;
-    sel.appendChild(opt);
-  });
+  const select = document.getElementById('spriteFocus');
+  select.innerHTML = '<option value="">📋 Tất cả sprite</option>';
+  if (!globalAnalysisData) return;
+  for (const sp of globalAnalysisData.sprites) {
+    const icon = sp.isStage ? '🎭' : '🐱';
+    select.innerHTML += `<option value="${esc(sp.name)}">${icon} ${esc(sp.name)}</option>`;
+  }
 }
 
-function switchLevel(lvl) {
-  currentLevel = lvl;
-  document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active', 'bg-blue-50', 'text-blue-700'));
-  const btn = document.getElementById('lvl' + lvl);
-  btn.classList.add('active', 'bg-blue-50', 'text-blue-700');
+function switchLevel(level) {
+  if (level < 1) level = 1;
+  if (level > 3) level = 3;
+  currentLevel = level;
+  debugOnlyMode = false;
 
-  const desc = document.getElementById('levelDesc');
-  if (lvl === 1) desc.textContent = "📊 Chỉ hiển thị tóm tắt vai trò và chức năng chính của từng nhân vật.";
-  if (lvl === 2) desc.textContent = "📊 Hiển thị logic chính, cảnh báo thực tế, và gợi ý cải thiện.";
-  if (lvl === 3) desc.textContent = "📊 Hiển thị chi tiết từng bước thực hiện của tất cả các kịch bản.";
+  // Update button styles
+  for (let i = 1; i <= 3; i++) {
+    const btn = document.getElementById('lvl' + i);
+    if (i === level) {
+      btn.classList.add('active');
+      btn.classList.remove('bg-gray-50');
+      btn.classList.add(i === 1 ? 'bg-green-50' : i === 2 ? 'bg-blue-50' : 'bg-purple-50');
+      btn.classList.add(i === 1 ? 'text-green-700' : i === 2 ? 'text-blue-700' : 'text-purple-700');
+    } else {
+      btn.classList.remove('active', 'bg-green-50', 'bg-blue-50', 'bg-purple-50', 'text-green-700', 'text-blue-700', 'text-purple-700');
+      btn.classList.add('bg-gray-50');
+    }
+  }
+
+  const descs = {
+    1: '📝 Chỉ hiển thị tổng quan, vai trò sprite, và gợi ý. Phù hợp cho người mới.',
+    2: '📊 Hiển thị logic chính, cảnh báo thực tế, và gợi ý cải thiện.',
+    3: '🔬 Hiển thị toàn bộ: logic chi tiết từng block, cảnh báo đầy đủ, phân tích sâu.'
+  };
+  document.getElementById('levelDesc').textContent = descs[level];
 
   renderResults();
 }
@@ -1389,178 +1754,49 @@ function applyFocus() {
   renderResults();
 }
 
-function showDebugOnly() {
-  debugOnlyMode = true;
-  showDebugPanel = true;
+function clearFocus() {
+  currentFocus = '';
+  document.getElementById('spriteFocus').value = '';
   renderResults();
 }
 
+function showDebugOnly() {
+  debugOnlyMode = true;
+  renderResults();
+  const ds = document.getElementById('debugSection');
+  if (ds) ds.scrollIntoView({ behavior: 'smooth' });
+}
+
 function showRecsOnly() {
-  // Simple filter logic via render
-  renderResults(true); 
+  debugOnlyMode = false;
+  renderResults();
+  const rs = document.getElementById('recsSection');
+  if (rs) rs.scrollIntoView({ behavior: 'smooth' });
 }
 
 function adjustLevel(dir) {
-  if (dir === 'more' && currentLevel < 3) switchLevel(currentLevel + 1);
-  if (dir === 'less' && currentLevel > 1) switchLevel(currentLevel - 1);
+  if (dir === 'less') switchLevel(currentLevel - 1);
+  else switchLevel(currentLevel + 1);
 }
 
-function renderResults(recsOnly = false) {
-  if (!globalAnalysisData) return;
-  const container = document.getElementById('resultsContent');
-  container.innerHTML = '';
-
-  const data = globalAnalysisData;
-
-  // 1. Overview Header
-  const header = document.createElement('div');
-  header.className = 'bg-white rounded-xl border p-5 shadow-sm';
-  header.innerHTML = `
-    <div class="flex justify-between items-start">
-      <div>
-        <h2 class="text-xl font-bold text-gray-800">Dự án: ${esc(data.projectName)}</h2>
-        <p class="text-gray-500 text-sm">Tổng cộng ${data.sprites.length} nhân vật và ${data.stage.scripts.length + data.sprites.reduce((a,s)=>a+s.scripts.length,0)} kịch bản.</p>
-      </div>
-      <div class="text-right no-print">
-        <span class="text-xs font-mono text-gray-400">v1.2 Stable</span>
-      </div>
-    </div>
-  `;
-  container.appendChild(header);
-
-  // 2. Debug/Warnings Panel
-  if (showDebugPanel && data.warnings.length > 0 && !recsOnly) {
-    const debugWrap = document.createElement('div');
-    debugWrap.className = 'bg-white rounded-xl border overflow-hidden shadow-sm';
-    debugWrap.innerHTML = `
-      <div class="bg-orange-50 px-4 py-2 border-b border-orange-100 flex justify-between items-center">
-        <h3 class="font-bold text-orange-800 text-sm flex items-center gap-2">⚠️ Phát hiện ${data.warnings.length} vấn đề cần lưu ý</h3>
-        <button onclick="togglePanel('debug')" class="text-xs text-orange-600 hover:underline cursor-pointer">Ẩn bảng</button>
-      </div>
-      <div class="p-2 space-y-1">
-        ${data.warnings.map(w => `
-          <div class="px-3 py-2 rounded-lg text-sm severity-${w.severity} flex gap-3">
-            <span>${w.severity === 'red' ? '❌' : '⚠️'}</span>
-            <div>
-              <span class="font-bold uppercase text-[10px] opacity-60">${w.category}</span>
-              <p class="text-gray-800">${esc(w.text)}</p>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-    container.appendChild(debugWrap);
+function toggleSection(header) {
+  const content = header.nextElementSibling;
+  const arrow = header.querySelector('span:last-child');
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+    arrow.textContent = '▼';
+  } else {
+    content.style.display = 'none';
+    arrow.textContent = '▶';
   }
-
-  // 3. Recommendations
-  if (data.recommendations.length > 0) {
-    const recWrap = document.createElement('div');
-    recWrap.className = 'bg-white rounded-xl border overflow-hidden shadow-sm';
-    recWrap.innerHTML = `
-      <div class="bg-green-50 px-4 py-2 border-b border-green-100 flex justify-between items-center">
-        <h3 class="font-bold text-green-800 text-sm flex items-center gap-2">💡 Gợi ý cải thiện</h3>
-      </div>
-      <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-        ${data.recommendations.map(r => `
-          <div class="flex gap-3 items-start p-3 bg-gray-50 rounded-lg border border-gray-100">
-            <span class="text-xl">✨</span>
-            <p class="text-sm text-gray-700">${esc(r.text)}</p>
-          </div>
-        `).join('')}
-      </div>
-    `;
-    container.appendChild(recWrap);
-    if (recsOnly) return; 
-  }
-
-  // 4. Sprites Analysis
-  const spritesToRender = [];
-  if (!currentFocus || currentFocus === '_stage_') spritesToRender.push({ isStage: true, ...data.stage });
-  data.sprites.forEach(s => {
-    if (!currentFocus || currentFocus === s.name) spritesToRender.push({ isStage: false, ...s });
-  });
-
-  spritesToRender.forEach(s => {
-    const card = document.createElement('div');
-    card.className = 'bg-white rounded-xl border shadow-sm overflow-hidden';
-
-    // Role logic
-    const roleHtml = s.roles && showRolesPanel ? `
-      <div class="flex flex-wrap gap-1 mt-2">
-        ${s.roles.map(r => `<span class="role-badge role-${r.id}">${r.label}</span>`).join('')}
-      </div>
-    ` : '';
-
-    const behaviorHtml = s.behaviors && currentLevel >= 2 ? `
-      <div class="mt-3 flex flex-wrap items-center">
-        <span class="text-[10px] font-bold text-gray-400 uppercase mr-2">Hành vi:</span>
-        ${s.behaviors.map(b => `<span class="behavior-chip">${esc(b)}</span>`).join('')}
-      </div>
-    ` : '';
-
-    card.innerHTML = `
-      <div class="p-5 ${s.isStage ? 'bg-slate-50' : ''}">
-        <div class="flex justify-between items-start">
-          <div>
-            <h3 class="text-lg font-bold text-gray-800">${s.isStage ? '🖼️ Phông nền (Stage)' : '👾 Nhân vật: ' + esc(s.name)}</h3>
-            ${roleHtml}
-          </div>
-          <div class="text-right">
-            <div class="text-xs text-gray-400 font-mono">${s.scripts.length} kịch bản | ${s.blockCount} khối</div>
-          </div>
-        </div>
-        
-        ${behaviorHtml}
-
-        <div class="mt-4 space-y-4">
-          ${s.scripts.map((sc, idx) => renderScript(sc, s.blocks, idx)).join('')}
-        </div>
-      </div>
-    `;
-    container.appendChild(card);
-  });
-}
-
-function renderScript(sc, blocks, index) {
-  const ev = getEventDescription(blocks[sc.id], blocks);
-
-  // Level 1: Tiny summary
-  if (currentLevel === 1) {
-    return `
-      <div class="border rounded-lg p-3 bg-gray-50 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <span class="event-badge ${ev.cls} mb-0">${ev.text}</span>
-          <span class="text-sm text-gray-600">${sc.summary}</span>
-        </div>
-        <span class="text-[10px] text-gray-400 font-mono">${sc.blockCount} khối</span>
-      </div>
-    `;
-  }
-
-  // Level 2 & 3: Detailed
-  const content = currentLevel === 3 
-    ? `<div class="mt-2 text-sm text-gray-700 bg-white p-3 rounded border border-gray-100 font-mono leading-relaxed">${followChain(blocks[sc.id].next, blocks, '', 0)}</div>`
-    : `<div class="mt-2 text-sm text-gray-600 pl-2 border-l-2 border-gray-100">${sc.summary}</div>`;
-
-  return `
-    <div class="group">
-      <div class="flex items-center gap-2">
-        <span class="event-badge ${ev.cls}">${ev.text}</span>
-        <span class="text-[10px] text-gray-300 font-mono opacity-0 group-hover:opacity-100 transition-opacity">#${index+1}</span>
-      </div>
-      ${content}
-    </div>
-  `;
 }
 
 function copyResults() {
   const el = document.getElementById('resultsContent');
-  // Simple text extraction
   const text = el.innerText;
   navigator.clipboard.writeText(text).then(() => {
     showToast('Đã copy kết quả!');
   }).catch(() => {
-    // Fallback
     const ta = document.createElement('textarea');
     ta.value = text;
     document.body.appendChild(ta);
@@ -1602,7 +1838,12 @@ function togglePanel(panel) {
   }
   renderResults();
 }
-
 </script>
 </body>
+</html>
+=======
+<html>
+<head>
+  <meta http-equiv="refresh" content="0; url=analyzer.html">
+</head>
 </html>
